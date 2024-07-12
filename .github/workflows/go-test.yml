@@ -1,4 +1,4 @@
-name: Tests + Formatting Check
+name: Test + Format Check
 
 on: [push, pull_request]
 
