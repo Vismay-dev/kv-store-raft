@@ -32,7 +32,8 @@ jobs:
 
       - name: Check format
         run: |
-          gofmt -l -s -w .
-          goimports -l .
-          if [ -n "$(gofmt -l -s .)" ]; then exit 1; fi
-          if [ -n "$(goimports -l .)" ]; then exit 1; fi
+          go fmt ./...
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Code is not formatted. Please run 'go fmt ./...' locally and commit changes."
+            exit 1
+          fi
