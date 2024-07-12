@@ -14,30 +14,31 @@ import (
 type State string
 
 const (
-	Follower 	State = "follower"
-	Candidate 	State = "candidate"
-	Leader 		State = "leader"
+	Follower  State = "follower"
+	Candidate State = "candidate"
+	Leader    State = "leader"
 )
+
 type Raft struct {
-	mu 			sync.Mutex
-	state 		State
-	me 			int
+	mu          sync.Mutex
+	state       State
+	me          int
 	currentTerm int
 	votedFor    int
-	peers		[]string
+	peers       []string
 	shutdownCh  chan struct{}
-	timerCh 	chan struct{}		
+	timerCh     chan struct{}
 }
 
 func Make(peers []string, me int) *Raft {
 	rf := &Raft{
-		state: Follower,
-		me: me,
+		state:       Follower,
+		me:          me,
 		currentTerm: 0,
-		votedFor: -1,
-		peers: peers,
-		shutdownCh: make(chan struct{}),
-		timerCh: make(chan struct{}),
+		votedFor:    -1,
+		peers:       peers,
+		shutdownCh:  make(chan struct{}),
+		timerCh:     make(chan struct{}),
 	}
 
 	rf.serve()
@@ -70,7 +71,7 @@ func (rf *Raft) serve() {
 
 func (rf *Raft) electionTimeout() {
 	start := time.Now()
-	timeout := time.Duration(200 + rand.Intn(300)) * time.Millisecond
+	timeout := time.Duration(200+rand.Intn(300)) * time.Millisecond
 
 	for {
 		select {
@@ -85,14 +86,14 @@ func (rf *Raft) electionTimeout() {
 				if rf.state == Candidate {
 					rf.state = Follower
 					log.Printf(
-						"[%d @ %s] restarting election...\n", 
-						rf.me, 
+						"[%d @ %s] restarting election...\n",
+						rf.me,
 						rf.peers[rf.me],
 					)
 				} else {
 					log.Printf(
-						"[%d @ %s] starting election...\n", 
-						rf.me, 
+						"[%d @ %s] starting election...\n",
+						rf.me,
 						rf.peers[rf.me],
 					)
 				}
@@ -100,14 +101,14 @@ func (rf *Raft) electionTimeout() {
 				go rf.electionTimeout()
 				return
 			}
-		}		
+		}
 	}
 }
 
 func (rf *Raft) sendHeartbeats() {
 	rf.mu.Lock()
 	args := &AppendEntriesRequest{
-		Term: rf.currentTerm,
+		Term:     rf.currentTerm,
 		LeaderId: rf.me,
 	}
 	rf.mu.Unlock()
@@ -132,8 +133,8 @@ func (rf *Raft) sendHeartbeats() {
 								rf.state = Follower
 								rf.votedFor = -1
 								log.Printf(
-									"[%d @ %s] (leader) heartbeat failed; reverting to follower\n", 
-									rf.me, 
+									"[%d @ %s] (leader) heartbeat failed; reverting to follower\n",
+									rf.me,
 									rf.peers[rf.me],
 								)
 							}
@@ -158,7 +159,7 @@ func (rf *Raft) startElection() {
 	rf.currentTerm++
 	rf.votedFor = rf.me
 	args := &RequestVoteRequest{
-		Term: rf.currentTerm,
+		Term:        rf.currentTerm,
 		CandidateId: rf.me,
 	}
 	rf.mu.Unlock()
@@ -187,12 +188,12 @@ func (rf *Raft) startElection() {
 	}
 
 	rf.mu.Lock()
-	for votes <= int32(len(rf.peers) / 2) {
+	for votes <= int32(len(rf.peers)/2) {
 		cond.Wait()
 		if rf.state != Candidate {
 			log.Printf(
-				"[%d @ %s] unqualified to become leader; quitting election\n", 
-				rf.me, 
+				"[%d @ %s] unqualified to become leader; quitting election\n",
+				rf.me,
 				rf.peers[rf.me],
 			)
 			rf.mu.Unlock()
@@ -201,8 +202,8 @@ func (rf *Raft) startElection() {
 	}
 
 	log.Printf(
-		"[%d @ %s] secured election; converting to leader\n", 
-		rf.me, 
+		"[%d @ %s] secured election; converting to leader\n",
+		rf.me,
 		rf.peers[rf.me],
 	)
 
@@ -259,8 +260,8 @@ func (rf *Raft) HandleAppendEntry(
 
 	if rf.currentTerm > AppendEntryReq.Term {
 		log.Printf(
-			"[%d @ %s] rejecting AppendEntry RPC from leader %d\n", 
-			rf.me, 
+			"[%d @ %s] rejecting AppendEntry RPC from leader %d\n",
+			rf.me,
 			rf.peers[rf.me],
 			AppendEntryReq.LeaderId,
 		)
@@ -280,9 +281,9 @@ func (rf *Raft) HandleAppendEntry(
 }
 
 func (rf *Raft) HandleRequestVote(
-	RequestVoteReq *RequestVoteRequest, 
+	RequestVoteReq *RequestVoteRequest,
 	RequestVoteRes *RequestVoteResponse,
-) error {	
+) error {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
@@ -293,7 +294,7 @@ func (rf *Raft) HandleRequestVote(
 	}
 
 	// note: important to grasp this
-	if rf.currentTerm < RequestVoteReq.Term {  
+	if rf.currentTerm < RequestVoteReq.Term {
 		rf.currentTerm = RequestVoteReq.Term
 		rf.votedFor = -1
 		rf.state = Follower
@@ -304,8 +305,8 @@ func (rf *Raft) HandleRequestVote(
 		RequestVoteRes.VoteGranted = true
 
 		log.Printf(
-			"[%d @ %s] voting for candidate %d\n", 
-			rf.me, 
+			"[%d @ %s] voting for candidate %d\n",
+			rf.me,
 			rf.peers[rf.me],
 			RequestVoteReq.CandidateId,
 		)

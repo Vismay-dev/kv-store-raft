@@ -1,21 +1,21 @@
 package raft
 
 type RequestVoteRequest struct {
-	Term 			int
-	CandidateId		int
+	Term        int
+	CandidateId int
 }
 
 type RequestVoteResponse struct {
-	Term 			int
-	VoteGranted		bool
+	Term        int
+	VoteGranted bool
 }
 
 type AppendEntriesRequest struct {
-	Term 			int
-	LeaderId		int
+	Term     int
+	LeaderId int
 }
 
 type AppendEntriesResponse struct {
-	Term 			int
-	Success			bool
+	Term    int
+	Success bool
 }
