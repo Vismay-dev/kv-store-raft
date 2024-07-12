@@ -12,6 +12,7 @@ type RequestVoteResponse struct {
 
 type AppendEntriesRequest struct {
 	Term 			int
+	LeaderId		int
 }
 
 type AppendEntriesResponse struct {
