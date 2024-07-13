@@ -29,8 +29,7 @@ type Raft struct {
 	shutdownCh  chan struct{}
 	timerCh     chan struct{}
 
-	ln   net.Listener
-	dead bool
+	dead int32
 }
 
 func Make(peers []string, me int) *Raft {
@@ -42,12 +41,26 @@ func Make(peers []string, me int) *Raft {
 		peers:       peers,
 		shutdownCh:  make(chan struct{}),
 		timerCh:     make(chan struct{}),
-		dead:        false,
+		dead:        0,
 	}
 
 	go rf.serve()
 
 	return rf
+}
+
+func (rf *Raft) Start() {
+	rf.electionTimeout()
+}
+
+func (rf *Raft) Kill() {
+	atomic.StoreInt32(&rf.dead, 1)
+}
+
+func (rf *Raft) Revive() {
+	if rf.isDead() {
+		atomic.StoreInt32(&rf.dead, 0)
+	}
 }
 
 func (rf *Raft) serve() {
@@ -61,11 +74,6 @@ func (rf *Raft) serve() {
 		log.Fatalf("Failed to listen on %s: %s", rf.peers[rf.me], err)
 	}
 
-	// rf.mu.Lock()
-	// rf.ln = listener
-	// rf.dead = false
-	// rf.mu.Unlock()
-
 	go func() {
 		defer func() {
 			if err := listener.Close(); err != nil {
@@ -73,11 +81,10 @@ func (rf *Raft) serve() {
 			}
 		}()
 		for {
-			// if rf.dead {
-			// 	rf.mu.Unlock()
-			// 	return
-			// }
 			conn, err := listener.Accept()
+			if rf.isDead() {
+				continue
+			}
 			if err != nil {
 				log.Fatalf("[%d @ %s] Failed to accept connection: %s", rf.me, rf.peers[rf.me], err)
 			}
@@ -86,21 +93,18 @@ func (rf *Raft) serve() {
 	}()
 }
 
-// func (rf *Raft) disconnect() {
-// 	rf.mu.Lock()
-// 	defer rf.mu.Unlock()
-// 	if err := rf.ln.Close(); err != nil {
-// 		log.Fatalf("Failed to close listener @ %s", rf.ln.Addr().String())
-// 	}
-// 	rf.dead = true
-// 	close(rf.shutdownCh)
-// }
+func (rf *Raft) isDead() bool {
+	return atomic.LoadInt32(&rf.dead) == 1
+}
 
 func (rf *Raft) electionTimeout() {
 	start := time.Now()
 	timeout := time.Duration(200+rand.Intn(300)) * time.Millisecond
 
 	for {
+		if rf.isDead() {
+			continue
+		}
 		select {
 		case <-rf.timerCh:
 			return
@@ -145,6 +149,9 @@ func (rf *Raft) sendHeartbeats() {
 	timeout := time.Duration(30) * time.Millisecond
 
 	for {
+		if rf.isDead() {
+			continue
+		}
 		select {
 		case <-rf.shutdownCh:
 			return
