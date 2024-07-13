@@ -73,12 +73,10 @@ func (rf *Raft) serve() {
 			}
 		}()
 		for {
-			rf.mu.Lock()
 			// if rf.dead {
 			// 	rf.mu.Unlock()
 			// 	return
 			// }
-			rf.mu.Unlock()
 			conn, err := listener.Accept()
 			if err != nil {
 				log.Fatalf("[%d @ %s] Failed to accept connection: %s", rf.me, rf.peers[rf.me], err)
