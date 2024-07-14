@@ -2,7 +2,7 @@ package utils
 
 import "log"
 
-var Debug bool = false
+var Debug bool = true
 
 // only used for RPC communication as of now
 func Dprintf(text string, args ...interface{}) {
