@@ -117,11 +117,6 @@ func (rf *Raft) electionTimeout() {
 		case <-rf.timerCh:
 			rf.mu.Lock()
 			if rf.state != Leader {
-				utils.Dprintf(
-					"[%d @ %s] restarting timer weeee...\n",
-					rf.me,
-					rf.peers[rf.me],
-				)
 				go rf.electionTimeout()
 			}
 			rf.mu.Unlock()
@@ -354,12 +349,12 @@ func (rf *Raft) HandleAppendEntry(
 	AppendEntryRes.Term = rf.currentTerm
 	AppendEntryRes.Success = true
 
-	// utils.Dprintf(
-	// 	"[%d @ %s] AppendEntry RPC from leader successful: %d\n",
-	// 	rf.me,
-	// 	rf.peers[rf.me],
-	// 	AppendEntryReq.LeaderId,
-	// )
+	utils.Dprintf(
+		"[%d @ %s] AppendEntry RPC from leader successful: %d\n",
+		rf.me,
+		rf.peers[rf.me],
+		AppendEntryReq.LeaderId,
+	)
 
 	return nil
 }
