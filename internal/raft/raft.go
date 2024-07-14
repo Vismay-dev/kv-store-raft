@@ -102,7 +102,7 @@ func (rf *Raft) serve() {
 
 func (rf *Raft) electionTimeout() {
 	start := time.Now()
-	timeout := time.Duration(200+rand.Intn(300)) * time.Millisecond
+	timeout := time.Duration(150+rand.Intn(150)) * time.Millisecond
 
 	for {
 		if rf.killed() {
@@ -117,6 +117,11 @@ func (rf *Raft) electionTimeout() {
 		case <-rf.timerCh:
 			rf.mu.Lock()
 			if rf.state != Leader {
+				utils.Dprintf(
+					"[%d @ %s] restarting timer weeee...\n",
+					rf.me,
+					rf.peers[rf.me],
+				)
 				go rf.electionTimeout()
 			}
 			rf.mu.Unlock()
@@ -125,12 +130,6 @@ func (rf *Raft) electionTimeout() {
 			now := time.Now()
 			elapsed := now.Sub(start)
 			if elapsed > timeout {
-				utils.Dprintf(
-					"[%d @ %s] elapsed time: %v\n",
-					rf.me,
-					rf.peers[rf.me],
-					elapsed,
-				)
 				rf.mu.Lock()
 				if rf.state == Candidate {
 					rf.state = Follower
@@ -163,7 +162,7 @@ func (rf *Raft) sendHeartbeats() {
 	}
 	rf.mu.Unlock()
 	start := time.Now()
-	timeout := time.Duration(30) * time.Millisecond
+	timeout := time.Duration(15) * time.Millisecond
 
 	for {
 		if rf.killed() {
@@ -186,13 +185,6 @@ func (rf *Raft) sendHeartbeats() {
 						var reply AppendEntriesResponse
 						if rf.sendAppendEntry(peer, args, &reply) {
 							rf.mu.Lock()
-							utils.Dprintf(
-								"[%d @ %s] (leader) sending heartbeat to %s; success: %v\n",
-								rf.me,
-								rf.peers[rf.me],
-								peer,
-								reply.Success,
-							)
 							if reply.Term > rf.currentTerm && !reply.Success {
 								rf.state = Follower
 								rf.votedFor = -1
@@ -202,15 +194,6 @@ func (rf *Raft) sendHeartbeats() {
 									rf.peers[rf.me],
 								)
 							}
-							rf.mu.Unlock()
-						} else {
-							rf.mu.Lock()
-							utils.Dprintf(
-								"[%d @ %s] rpc failed for follower %s...\n",
-								rf.me,
-								rf.peers[rf.me],
-								peer,
-							)
 							rf.mu.Unlock()
 						}
 					}(peer)
@@ -241,7 +224,7 @@ func (rf *Raft) startElection() {
 	}
 	rf.mu.Unlock()
 
-	var votes int32
+	var votes int32 = 1
 	cond := sync.NewCond(&rf.mu)
 
 	for _, peer := range rf.peers {
@@ -371,12 +354,12 @@ func (rf *Raft) HandleAppendEntry(
 	AppendEntryRes.Term = rf.currentTerm
 	AppendEntryRes.Success = true
 
-	utils.Dprintf(
-		"[%d @ %s] AppendEntry RPC from leader successful: %d\n",
-		rf.me,
-		rf.peers[rf.me],
-		AppendEntryReq.LeaderId,
-	)
+	// utils.Dprintf(
+	// 	"[%d @ %s] AppendEntry RPC from leader successful: %d\n",
+	// 	rf.me,
+	// 	rf.peers[rf.me],
+	// 	AppendEntryReq.LeaderId,
+	// )
 
 	return nil
 }
