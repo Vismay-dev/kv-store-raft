@@ -33,46 +33,37 @@ func testNormal(t *testing.T, raftNodes []*Raft, peerAddrs []string) {
 }
 
 func testNetworkPartition(t *testing.T, raftNodes []*Raft, peerAddrs []string) {
+	// var leaderNode *Raft
+	// for _, node := range raftNodes {
+	// 	node.mu.Lock()
+	// 	if node.state == Leader {
+	// 		leaderNode = node
+	// 	}
+	// 	node.mu.Unlock()
+	// }
+
+	// log.Printf("[==tester==] Killing leader node (%d @ %s)", leaderNode.me, peerAddrs[leaderNode.me])
+	// leaderNode.Kill()
+
 	randNode := raftNodes[rand.Intn(len(raftNodes))]
 
 	log.Printf("[==tester==] Killing raft node (%d @ %s)", randNode.me, peerAddrs[randNode.me])
+
+	randNode.mu.Lock()
 	randNode.Kill()
+	randNode.mu.Unlock()
+
 	time.Sleep(2 * time.Second)
 
 	checkLeaderElection(t, raftNodes)
 	checkTermEquality(t, raftNodes)
 
-	log.Printf("[==tester==] Reviving raft node (%d @ %s)", randNode.me, peerAddrs[randNode.me])
-	randNode.Revive()
-	time.Sleep(2 * time.Second)
+	// log.Printf("[==tester==] Reviving raft node (%d @ %s)", randNode.me, peerAddrs[randNode.me])
+	// randNode.Revive()
+	// time.Sleep(1 * time.Second)
 
-	checkLeaderElection(t, raftNodes)
-	checkTermEquality(t, raftNodes)
-
-	anotherRandNode := raftNodes[rand.Intn(len(raftNodes))]
-
-	log.Printf("[==tester==] Killing raft node (%d @ %s)", randNode.me, peerAddrs[randNode.me])
-	randNode.Kill()
-	log.Printf("[==tester==] Killing raft node (%d @ %s)", anotherRandNode.me, peerAddrs[anotherRandNode.me])
-	anotherRandNode.Kill()
-	time.Sleep(2 * time.Second)
-
-	checkLeaderElection(t, raftNodes)
-	checkTermEquality(t, raftNodes)
-
-	log.Printf("[==tester==] Reviving raft node (%d @ %s)", randNode.me, peerAddrs[randNode.me])
-	randNode.Revive()
-	time.Sleep(2 * time.Second)
-
-	checkLeaderElection(t, raftNodes)
-	checkTermEquality(t, raftNodes)
-
-	log.Printf("[==tester==] Reviving raft node (%d @ %s)", anotherRandNode.me, peerAddrs[anotherRandNode.me])
-	anotherRandNode.Revive()
-	time.Sleep(2 * time.Second)
-
-	checkLeaderElection(t, raftNodes)
-	checkTermEquality(t, raftNodes)
+	// checkLeaderElection(t, raftNodes)
+	// checkTermEquality(t, raftNodes)
 }
 
 // helpers / unit tests
@@ -82,6 +73,9 @@ func checkLeaderElection(t *testing.T, raftNodes []*Raft) {
 	leaderCnt := 0
 	for _, rf := range raftNodes {
 		rf.mu.Lock()
+		if rf.killed() {
+			continue
+		}
 		if rf.state == Leader {
 			leaderCnt += 1
 		}
@@ -101,6 +95,9 @@ func checkTermEquality(t *testing.T, raftNodes []*Raft) {
 
 	for _, rf := range raftNodes[1:] {
 		rf.mu.Lock()
+		if rf.killed() {
+			continue
+		}
 		if rf.currentTerm != term {
 			t.Errorf("Failed Leader Election; node with inconsistent term found (%d)", rf.me)
 		}

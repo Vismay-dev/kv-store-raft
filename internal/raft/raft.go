@@ -9,6 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/vismaysur/kv-store-raft/internal/raft/utils"
 )
 
 type State string
@@ -26,7 +28,6 @@ type Raft struct {
 	currentTerm int
 	votedFor    int
 	peers       []string
-	shutdownCh  chan struct{}
 	timerCh     chan struct{}
 
 	dead int32
@@ -39,7 +40,6 @@ func Make(peers []string, me int) *Raft {
 		currentTerm: 0,
 		votedFor:    -1,
 		peers:       peers,
-		shutdownCh:  make(chan struct{}),
 		timerCh:     make(chan struct{}),
 		dead:        0,
 	}
@@ -58,15 +58,19 @@ func (rf *Raft) Kill() {
 }
 
 func (rf *Raft) Revive() {
-	if rf.isDead() {
+	if rf.killed() {
 		atomic.StoreInt32(&rf.dead, 0)
 	}
+}
+
+func (rf *Raft) killed() bool {
+	return int(atomic.LoadInt32(&rf.dead)) == 1
 }
 
 func (rf *Raft) serve() {
 	serviceName := fmt.Sprintf("Raft-%d", rf.me)
 	if err := rpc.RegisterName(serviceName, rf); err != nil {
-		log.Printf("Failed to register RPC: %s", err)
+		utils.Dprintf("Failed to register RPC: %s", err)
 	}
 
 	listener, err := net.Listen("tcp", rf.peers[rf.me])
@@ -82,9 +86,6 @@ func (rf *Raft) serve() {
 		}()
 		for {
 			conn, err := listener.Accept()
-			if rf.isDead() {
-				continue
-			}
 			if err != nil {
 				log.Fatalf("[%d @ %s] Failed to accept connection: %s", rf.me, rf.peers[rf.me], err)
 			}
@@ -93,43 +94,42 @@ func (rf *Raft) serve() {
 	}()
 }
 
-func (rf *Raft) isDead() bool {
-	return atomic.LoadInt32(&rf.dead) == 1
-}
-
 func (rf *Raft) electionTimeout() {
 	start := time.Now()
 	timeout := time.Duration(200+rand.Intn(300)) * time.Millisecond
 
 	for {
-		if rf.isDead() {
-			continue
+		if rf.killed() {
+			utils.Dprintf(
+				"[%d @ %s] node is dead...\n",
+				rf.me,
+				rf.peers[rf.me],
+			)
+			return
 		}
 		select {
 		case <-rf.timerCh:
-			return
-		case <-rf.shutdownCh:
 			return
 		default:
 			now := time.Now()
 			elapsed := now.Sub(start)
 			if elapsed > timeout {
 				rf.mu.Lock()
-				defer rf.mu.Unlock()
 				if rf.state == Candidate {
 					rf.state = Follower
-					log.Printf(
+					utils.Dprintf(
 						"[%d @ %s] restarting election...\n",
 						rf.me,
 						rf.peers[rf.me],
 					)
 				} else {
-					log.Printf(
+					utils.Dprintf(
 						"[%d @ %s] starting election...\n",
 						rf.me,
 						rf.peers[rf.me],
 					)
 				}
+				rf.mu.Unlock()
 				go rf.startElection()
 				go rf.electionTimeout()
 				return
@@ -149,47 +149,57 @@ func (rf *Raft) sendHeartbeats() {
 	timeout := time.Duration(30) * time.Millisecond
 
 	for {
-		if rf.isDead() {
-			continue
-		}
-		select {
-		case <-rf.shutdownCh:
+		if rf.killed() {
+			utils.Dprintf(
+				"[%d @ %s] node is dead...\n",
+				rf.me,
+				rf.peers[rf.me],
+			)
 			return
-		default:
-			now := time.Now()
-			elapsed := now.Sub(start)
-			if elapsed >= timeout {
-				var wg sync.WaitGroup
-				for _, peer := range rf.peers {
-					if peer != rf.peers[rf.me] {
-						wg.Add(1)
-						go func(peer string) {
-							defer wg.Done()
-							var reply AppendEntriesResponse
-							if rf.sendAppendEntry(peer, args, &reply) {
-								rf.mu.Lock()
-								defer rf.mu.Unlock()
-								if reply.Term > rf.currentTerm && !reply.Success {
-									rf.state = Follower
-									rf.votedFor = -1
-									log.Printf(
-										"[%d @ %s] (leader) heartbeat failed; reverting to follower\n",
-										rf.me,
-										rf.peers[rf.me],
-									)
-								}
+		}
+		now := time.Now()
+		elapsed := now.Sub(start)
+		if elapsed >= timeout {
+			var wg sync.WaitGroup
+			for _, peer := range rf.peers {
+				if peer != rf.peers[rf.me] {
+					wg.Add(1)
+					go func(peer string) {
+						defer wg.Done()
+						var reply AppendEntriesResponse
+						if rf.sendAppendEntry(peer, args, &reply) {
+							rf.mu.Lock()
+							utils.Dprintf(
+								"[%d @ %s] (leader) sending heartbeat to %s; success: %v\n",
+								rf.me,
+								rf.peers[rf.me],
+								peer,
+								reply.Success,
+							)
+							if reply.Term > rf.currentTerm && !reply.Success {
+								rf.state = Follower
+								rf.votedFor = -1
+								utils.Dprintf(
+									"[%d @ %s] (leader) heartbeat failed; reverting to follower\n",
+									rf.me,
+									rf.peers[rf.me],
+								)
 							}
-						}(peer)
-					}
+							rf.mu.Unlock()
+						}
+					}(peer)
 				}
-				wg.Wait() // check: does the leader have to wait for all responses?
-
-				if rf.state == Follower {
-					go rf.electionTimeout()
-					return
-				}
-				start = now
 			}
+			wg.Wait() // check: does the leader have to wait for all responses?
+
+			rf.mu.Lock()
+			if rf.state == Follower {
+				go rf.electionTimeout()
+				rf.mu.Unlock()
+				return
+			}
+			rf.mu.Unlock()
+			start = now
 		}
 	}
 }
@@ -197,7 +207,7 @@ func (rf *Raft) sendHeartbeats() {
 func (rf *Raft) startElection() {
 	rf.mu.Lock()
 	rf.state = Candidate
-	rf.currentTerm++
+	rf.currentTerm += 1
 	rf.votedFor = rf.me
 	args := &RequestVoteRequest{
 		Term:        rf.currentTerm,
@@ -214,7 +224,6 @@ func (rf *Raft) startElection() {
 				var reply RequestVoteResponse
 				if rf.sendRequestVote(peer, args, &reply) {
 					rf.mu.Lock()
-					defer rf.mu.Unlock()
 					if reply.Term > rf.currentTerm {
 						rf.currentTerm = reply.Term
 						rf.votedFor = -1
@@ -223,6 +232,7 @@ func (rf *Raft) startElection() {
 						atomic.AddInt32(&votes, 1)
 					}
 					cond.Broadcast()
+					rf.mu.Unlock()
 				}
 			}(peer)
 		}
@@ -232,7 +242,7 @@ func (rf *Raft) startElection() {
 	for votes <= int32(len(rf.peers)/2) {
 		cond.Wait()
 		if rf.state != Candidate {
-			log.Printf(
+			utils.Dprintf(
 				"[%d @ %s] unqualified to become leader; quitting election\n",
 				rf.me,
 				rf.peers[rf.me],
@@ -242,7 +252,7 @@ func (rf *Raft) startElection() {
 		}
 	}
 
-	log.Printf(
+	utils.Dprintf(
 		"[%d @ %s] secured election; converting to leader\n",
 		rf.me,
 		rf.peers[rf.me],
@@ -262,7 +272,7 @@ func (rf *Raft) sendAppendEntry(peer string, req *AppendEntriesRequest, res *App
 		}
 	}
 	rpcname := fmt.Sprintf("Raft-%d.HandleAppendEntry", peerId)
-	return call(peer, rpcname, &req, &res)
+	return rf.call(peer, rpcname, &req, &res)
 }
 
 func (rf *Raft) sendRequestVote(peer string, req *RequestVoteRequest, res *RequestVoteResponse) bool {
@@ -273,19 +283,25 @@ func (rf *Raft) sendRequestVote(peer string, req *RequestVoteRequest, res *Reque
 		}
 	}
 	rpcname := fmt.Sprintf("Raft-%d.HandleRequestVote", peerId)
-	return call(peer, rpcname, &req, &res)
+	return rf.call(peer, rpcname, &req, &res)
 }
 
-func call(peer, rpcname string, req interface{}, res interface{}) bool {
+func (rf *Raft) call(peer, rpcname string, req interface{}, res interface{}) bool {
 	conn, err := net.Dial("tcp", peer)
 	if err != nil {
-		log.Fatalf("Failed to dial %s: %s", peer, err)
+		utils.Dprintf("Failed to dial %s: %s", peer, err)
+		return false
 	}
 	defer conn.Close()
 
 	client := rpc.NewClient(conn)
 	if err := client.Call(rpcname, req, res); err != nil {
-		log.Fatalf("RPC call failed: %s", err)
+		utils.Dprintf(
+			"[%d @ %s] RPC call to [%s] failed: %s",
+			rf.me, rf.peers[rf.me],
+			peer,
+			err,
+		)
 		return false
 	}
 
@@ -299,14 +315,17 @@ func (rf *Raft) HandleAppendEntry(
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
+	if rf.killed() {
+		return fmt.Errorf("node is dead")
+	}
+
 	if rf.currentTerm > AppendEntryReq.Term {
-		log.Printf(
+		utils.Dprintf(
 			"[%d @ %s] rejecting AppendEntry RPC from leader %d\n",
 			rf.me,
 			rf.peers[rf.me],
 			AppendEntryReq.LeaderId,
 		)
-
 		AppendEntryRes.Term = rf.currentTerm
 		AppendEntryRes.Success = false
 		return nil
@@ -328,6 +347,10 @@ func (rf *Raft) HandleRequestVote(
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
+	if rf.killed() {
+		return fmt.Errorf("node is dead")
+	}
+
 	if rf.currentTerm > RequestVoteReq.Term {
 		RequestVoteRes.Term = rf.currentTerm
 		RequestVoteRes.VoteGranted = false
@@ -345,7 +368,7 @@ func (rf *Raft) HandleRequestVote(
 		rf.votedFor = RequestVoteReq.CandidateId
 		RequestVoteRes.VoteGranted = true
 
-		log.Printf(
+		utils.Dprintf(
 			"[%d @ %s] voting for candidate %d\n",
 			rf.me,
 			rf.peers[rf.me],
