@@ -1,12 +1,14 @@
 package utils
 
-import "log"
+import (
+	"log"
+)
 
-var Debug bool = false
+var Debug int32
 
 // only used for RPC communication as of now
 func Dprintf(text string, args ...interface{}) {
-	if Debug {
+	if Debug == 1 {
 		log.Printf(text, args...)
 	}
 }
