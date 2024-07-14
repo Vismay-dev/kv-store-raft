@@ -157,7 +157,7 @@ func (rf *Raft) sendHeartbeats() {
 	}
 	rf.mu.Unlock()
 	start := time.Now()
-	timeout := time.Duration(15) * time.Millisecond
+	timeout := time.Duration(25) * time.Millisecond
 
 	for {
 		if rf.killed() {
@@ -244,7 +244,6 @@ func (rf *Raft) startElection() {
 
 	rf.mu.Lock()
 	for votes <= int32(len(rf.peers)/2) {
-		cond.Wait()
 		if rf.state != Candidate {
 			utils.Dprintf(
 				"[%d @ %s] unqualified to become leader; quitting election\n",
@@ -254,6 +253,7 @@ func (rf *Raft) startElection() {
 			rf.mu.Unlock()
 			return
 		}
+		cond.Wait()
 	}
 
 	utils.Dprintf(
