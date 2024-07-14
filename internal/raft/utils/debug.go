@@ -8,7 +8,7 @@ import (
 var Debug atomic.Int32
 
 func init() {
-	Debug.Store(1)
+	Debug.Store(0)
 }
 
 // only used for RPC communication as of now

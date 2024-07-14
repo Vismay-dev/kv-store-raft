@@ -102,7 +102,7 @@ func (rf *Raft) serve() {
 
 func (rf *Raft) electionTimeout() {
 	start := time.Now()
-	timeout := time.Duration(150+rand.Intn(150)) * time.Millisecond
+	timeout := time.Duration(250+rand.Intn(150)) * time.Millisecond
 
 	for {
 		if rf.killed() {
