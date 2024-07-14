@@ -14,8 +14,8 @@ type TestCase func(t *testing.T, raftNodes []*Raft, peerAddresses []string)
 func TestRaft(t *testing.T) {
 	raftNodes, peerAddrs := setup(t)
 	for testName, testFunc := range map[string]TestCase{
-		"TestLeaderElectionNormal": testLeaderElectionNormal,
-		// "TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
+		"TestLeaderElectionNormal":           testLeaderElectionNormal,
+		"TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
 	} {
 		t.Run(testName, func(t *testing.T) {
 			testFunc(t, raftNodes, peerAddrs)
