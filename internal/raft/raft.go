@@ -168,7 +168,7 @@ func (rf *Raft) sendHeartbeats() {
 	for {
 		if rf.killed() {
 			utils.Dprintf(
-				"[%d @ %s] node is dead...\n",
+				"[%d @ %s] node is dead; try heartbeat again later\n",
 				rf.me,
 				rf.peers[rf.me],
 			)
