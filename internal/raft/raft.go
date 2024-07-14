@@ -50,7 +50,12 @@ func Make(peers []string, me int) *Raft {
 }
 
 func (rf *Raft) Start() {
-	rf.electionTimeout()
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	go rf.electionTimeout()
+	if rf.state == Leader {
+		go rf.sendHeartbeats()
+	}
 }
 
 func (rf *Raft) Kill() {
@@ -60,6 +65,7 @@ func (rf *Raft) Kill() {
 func (rf *Raft) Revive() {
 	if rf.killed() {
 		atomic.StoreInt32(&rf.dead, 0)
+		rf.Start()
 	}
 }
 
@@ -109,11 +115,22 @@ func (rf *Raft) electionTimeout() {
 		}
 		select {
 		case <-rf.timerCh:
+			rf.mu.Lock()
+			if rf.state != Leader {
+				go rf.electionTimeout()
+			}
+			rf.mu.Unlock()
 			return
 		default:
 			now := time.Now()
 			elapsed := now.Sub(start)
 			if elapsed > timeout {
+				utils.Dprintf(
+					"[%d @ %s] elapsed time: %v\n",
+					rf.me,
+					rf.peers[rf.me],
+					elapsed,
+				)
 				rf.mu.Lock()
 				if rf.state == Candidate {
 					rf.state = Follower
@@ -185,6 +202,15 @@ func (rf *Raft) sendHeartbeats() {
 									rf.peers[rf.me],
 								)
 							}
+							rf.mu.Unlock()
+						} else {
+							rf.mu.Lock()
+							utils.Dprintf(
+								"[%d @ %s] rpc failed for follower %s...\n",
+								rf.me,
+								rf.peers[rf.me],
+								peer,
+							)
 							rf.mu.Unlock()
 						}
 					}(peer)
@@ -331,12 +357,27 @@ func (rf *Raft) HandleAppendEntry(
 		return nil
 	}
 
+	rf.timerCh <- struct{}{}
 	rf.state = Follower
 	rf.currentTerm = AppendEntryReq.Term
+
+	utils.Dprintf(
+		"[%d @ %s] received AppendEntry RPC from leader %d\n",
+		rf.me,
+		rf.peers[rf.me],
+		AppendEntryReq.LeaderId,
+	)
+
 	AppendEntryRes.Term = rf.currentTerm
 	AppendEntryRes.Success = true
-	rf.timerCh <- struct{}{}
-	go rf.electionTimeout()
+
+	utils.Dprintf(
+		"[%d @ %s] AppendEntry RPC from leader successful: %d\n",
+		rf.me,
+		rf.peers[rf.me],
+		AppendEntryReq.LeaderId,
+	)
+
 	return nil
 }
 
@@ -381,7 +422,6 @@ func (rf *Raft) HandleRequestVote(
 	RequestVoteRes.Term = rf.currentTerm
 	if RequestVoteRes.VoteGranted {
 		rf.timerCh <- struct{}{}
-		go rf.electionTimeout()
 	}
 	return nil
 }
