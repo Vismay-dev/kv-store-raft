@@ -37,7 +37,7 @@ const (
 // AppendEntries RPC:
 // - when a majority have replicated entry, append commitIndex and apply to state
 // - include this commitIndex in future AppendEntries RPCs (including heartbeats) so the other servers find out
-// these otherservers can apply it to their state (they should already atleast have it as commitIndex: check later pointers)
+// these otherservers can apply it to their state and set it as their commitindex
 // - include the last index and term before new entries, if follower can't find the last i & t in their log, they should reject the request
 // - if rejection is caused by i & t not existing:
 // ???
@@ -106,12 +106,14 @@ func Make(peers []string, me int) *Raft {
 }
 
 func (rf *Raft) Start() {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
 	go rf.electionTimeout()
+	rf.mu.Lock()
 	if rf.state == Leader {
+		rf.mu.Unlock()
 		go rf.sendHeartbeats()
+		return
 	}
+	rf.mu.Unlock()
 }
 
 func (rf *Raft) Kill() {
@@ -158,7 +160,7 @@ func (rf *Raft) serve() {
 
 func (rf *Raft) electionTimeout() {
 	start := time.Now()
-	timeout := time.Duration(250+rand.Intn(150)) * time.Millisecond
+	timeout := time.Duration(350+rand.Intn(150)) * time.Millisecond
 
 	for {
 		if rf.killed() {
@@ -173,7 +175,9 @@ func (rf *Raft) electionTimeout() {
 		case <-rf.timerChElection:
 			rf.mu.Lock()
 			if rf.state != Leader {
+				rf.mu.Unlock()
 				go rf.electionTimeout()
+				return
 			}
 			rf.mu.Unlock()
 			return
@@ -217,7 +221,7 @@ func (rf *Raft) sendHeartbeats() {
 	rf.mu.Unlock()
 
 	start := time.Now()
-	timeout := time.Duration(25) * time.Millisecond
+	timeout := time.Duration(40) * time.Millisecond
 
 	for {
 		if rf.killed() {
@@ -267,8 +271,8 @@ func (rf *Raft) sendEmptyAppendEntries(args *AppendEntriesRequest) bool {
 
 	rf.mu.Lock()
 	if rf.state == Follower {
-		go rf.electionTimeout()
 		rf.mu.Unlock()
+		go rf.electionTimeout()
 		return false
 	}
 	rf.mu.Unlock()
@@ -280,7 +284,6 @@ func (rf *Raft) startElection() {
 	rf.state = Candidate
 	rf.currentTerm += 1
 	rf.votedFor = rf.me
-	go rf.electionTimeout()
 	args := &RequestVoteRequest{
 		Term:         rf.currentTerm,
 		CandidateId:  rf.me,
@@ -288,6 +291,8 @@ func (rf *Raft) startElection() {
 		LastLogTerm:  0,
 	}
 	rf.mu.Unlock()
+
+	go rf.electionTimeout()
 
 	var votes int32 = 1
 	cond := sync.NewCond(&rf.mu)
@@ -332,29 +337,33 @@ func (rf *Raft) startElection() {
 		Term:     rf.currentTerm,
 		LeaderId: rf.me,
 	}
+	rf.mu.Unlock()
 	go rf.sendEmptyAppendEntries(argsNew)
 	go rf.sendHeartbeats()
-	rf.mu.Unlock()
 }
 
 func (rf *Raft) sendAppendEntry(peer string, req *AppendEntriesRequest, res *AppendEntriesResponse) bool {
 	var peerId int
+	rf.mu.Lock()
 	for i, rfPeer := range rf.peers {
 		if rfPeer == peer {
 			peerId = i
 		}
 	}
+	rf.mu.Unlock()
 	rpcname := fmt.Sprintf("Raft-%d.HandleAppendEntry", peerId)
 	return rf.call(peer, rpcname, &req, &res)
 }
 
 func (rf *Raft) sendRequestVote(peer string, req *RequestVoteRequest, res *RequestVoteResponse) bool {
 	var peerId int
+	rf.mu.Lock()
 	for i, rfPeer := range rf.peers {
 		if rfPeer == peer {
 			peerId = i
 		}
 	}
+	rf.mu.Unlock()
 	rpcname := fmt.Sprintf("Raft-%d.HandleRequestVote", peerId)
 	return rf.call(peer, rpcname, &req, &res)
 }
@@ -385,12 +394,12 @@ func (rf *Raft) HandleAppendEntry(
 	AppendEntryReq *AppendEntriesRequest,
 	AppendEntryRes *AppendEntriesResponse,
 ) error {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-
 	if rf.killed() {
 		return fmt.Errorf("node is dead")
 	}
+
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 
 	if rf.currentTerm > AppendEntryReq.Term {
 		utils.Dprintf(
@@ -432,12 +441,12 @@ func (rf *Raft) HandleRequestVote(
 	RequestVoteReq *RequestVoteRequest,
 	RequestVoteRes *RequestVoteResponse,
 ) error {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-
 	if rf.killed() {
 		return fmt.Errorf("node is dead")
 	}
+
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 
 	if rf.currentTerm > RequestVoteReq.Term {
 		RequestVoteRes.Term = rf.currentTerm

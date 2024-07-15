@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"log"
 	"math/rand"
 	"testing"
 	"time"
@@ -14,8 +13,8 @@ type TestCase func(t *testing.T, raftNodes []*Raft, peerAddresses []string)
 func TestRaft(t *testing.T) {
 	raftNodes, peerAddrs := setup(t)
 	for testName, testFunc := range map[string]TestCase{
-		"TestLeaderElectionNormal": testLeaderElectionNormal,
-		// "TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
+		"TestLeaderElectionNormal":           testLeaderElectionNormal,
+		"TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
 	} {
 		t.Run(testName, func(t *testing.T) {
 			testFunc(t, raftNodes, peerAddrs)
@@ -35,21 +34,21 @@ func testLeaderElectionNormal(t *testing.T, raftNodes []*Raft, peerAddrs []strin
 func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, peerAddrs []string) {
 	randNode := raftNodes[rand.Intn(len(raftNodes))]
 
-	log.Printf("[==tester==] Killing random raft node (%d @ %s)", randNode.me, peerAddrs[randNode.me])
+	// log.Printf("[==tester==] Killing random raft node (%d @ %s)", randNode.me, peerAddrs[randNode.me])
 	randNode.Kill()
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 	checkLeaderElection(t, raftNodes)
 	checkTermEquality(t, raftNodes)
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
-	log.Printf("[==tester==] Reviving random raft node (%d @ %s)", randNode.me, peerAddrs[randNode.me])
+	// log.Printf("[==tester==] Reviving random raft node (%d @ %s)", randNode.me, peerAddrs[randNode.me])
 	randNode.Revive()
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 	checkLeaderElection(t, raftNodes)
 	checkTermEquality(t, raftNodes)
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	var leaderNode *Raft
 	for _, node := range raftNodes {
@@ -60,18 +59,18 @@ func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, peerAdd
 		node.mu.Unlock()
 	}
 
-	log.Printf("[==tester==] Killling leader raft node (%d @ %s)", leaderNode.me, peerAddrs[leaderNode.me])
+	// log.Printf("[==tester==] Killling leader raft node (%d @ %s)", leaderNode.me, peerAddrs[leaderNode.me])
 	leaderNode.Kill()
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 	checkLeaderElection(t, raftNodes)
 	checkTermEquality(t, raftNodes)
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
-	log.Printf("[==tester==] Reviving former leader raft node (%d @ %s)", leaderNode.me, peerAddrs[leaderNode.me])
+	// log.Printf("[==tester==] Reviving former leader raft node (%d @ %s)", leaderNode.me, peerAddrs[leaderNode.me])
 	leaderNode.Revive()
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 	checkLeaderElection(t, raftNodes)
 	checkTermEquality(t, raftNodes)
 }
@@ -121,6 +120,8 @@ func checkTermEquality(t *testing.T, raftNodes []*Raft) {
 func setup(t *testing.T) ([]*Raft, []string) {
 	t.Helper()
 
+	// utils.Debug.Store(1)
+
 	peerAddresses := []string{":8000", ":8001", ":8002", ":8003", ":8004"}
 	raftNodes := []*Raft{}
 	for i := range peerAddresses {
@@ -133,6 +134,6 @@ func setup(t *testing.T) ([]*Raft, []string) {
 	}
 
 	// Allowing initial leader election
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 	return raftNodes, peerAddresses
 }

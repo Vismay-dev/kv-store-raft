@@ -25,3 +25,11 @@ type AppendEntriesResponse struct {
 	Term    int
 	Success bool
 }
+
+type ClientReqRequest struct {
+	Entry LogEntry
+}
+
+type ClientReqResponse struct {
+	Success bool
+}
