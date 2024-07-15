@@ -21,18 +21,63 @@ const (
 	Leader    State = "leader"
 )
 
+// TODO:
+
+// 1) Accept client request to random node and redirect to leader
+// 2) Leader: appends new entries to log
+// 3) Leader: issues AppendEntries RPCs to followers
+// 4) Leader: checks to see if entries have been safely replicated on majority
+// if the AppendEntries RPC has failed on any follower continue retrying indefinitely
+// if condition is met, proceed, but continue retrying in background ?? check this properly
+// differentiate between rpc failing and follower being "killed"; if killed give up
+// 5) Leader: marks them as committed, applies entries, and sends response to client
+
+// THE FINER DETAILS:
+
+// AppendEntries RPC:
+// - when a majority have replicated entry, append commitIndex and apply to state
+// - include this commitIndex in future AppendEntries RPCs (including heartbeats) so the other servers find out
+// these otherservers can apply it to their state (they should already atleast have it as commitIndex: check later pointers)
+// - include the last index and term before new entries, if follower can't find the last i & t in their log, they should reject the request
+// - if rejection is caused by i & t not existing:
+// ???
+// - but if i & t exists but rejection is because nextIndex conflict with an existing entry:
+// decrement nextIndex, now after this leader should try again at the nextIndex and see if the nextIndex and log match,
+// if they don't match decrement and repeat, if they match delete all entries that follow and add all entries of the leader from nextIndex
+// see (OTHER IMPORTANT DETAILS) for more clarity
+// - follower: if leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
+
+// RequestVote RPC:
+// - follower: in the section where we check for if votedFor is null or candidateId, also check if: candidate's log is atleast as upto date as follower's
+
+// OTHER IMPORTANT DETAILS: (these seem blurry - read Raft paper) (!! what is matchIndex?)
+// - wherever commitIndex is being appended, if commitIndex > lastApplied, increment lastApplied and apply it.
+// - for leader: if last log index >= nextIndex (probably due to nextIndexing decrementing because of conflict)
+// send AppendEntries RPCs to follower with logentries starting at nextIndex
+// if it's successful here: update nextIndex and matchIndex for follower
+// if it fails decrement nextIndex and retry
+// - for leader: if there exists and index N such that N > commitIndex and a majority of matchIndex[i] >= N
+// and log[N].term == currentTerm, then set commitIndex == N (yep no clue here, read 5.3, 5.4 ig)
+
+type LogEntry struct {
+	// data  	string
+	// term  	string
+}
+
 type Raft struct {
-	mu          sync.Mutex
-	state       State
-	me          int
-	currentTerm int
-	votedFor    int
-	peers       []string
-
+	mu              sync.Mutex
+	state           State
+	me              int
+	currentTerm     int
+	votedFor        int
+	peers           []string
 	timerChElection chan struct{}
-	// timerChHeartbeat	chan struct{}
 
+	log         []LogEntry
 	commitIndex int
+	lastApplied int
+	nextIndex   []int
+	matchIndex  []int
 
 	dead int32
 }
@@ -46,7 +91,11 @@ func Make(peers []string, me int) *Raft {
 		peers:           peers,
 		timerChElection: make(chan struct{}),
 
+		log:         []LogEntry{},
 		commitIndex: 0,
+		lastApplied: 0,
+		nextIndex:   []int{},
+		matchIndex:  []int{},
 
 		dead: 0,
 	}
@@ -158,8 +207,12 @@ func (rf *Raft) electionTimeout() {
 func (rf *Raft) sendHeartbeats() {
 	rf.mu.Lock()
 	args := &AppendEntriesRequest{
-		Term:     rf.currentTerm,
-		LeaderId: rf.me,
+		Term:         rf.currentTerm,
+		LeaderId:     rf.me,
+		PrevLogIndex: 0,
+		PrevLogTerm:  0,
+		Entries:      rf.log,
+		LeaderCommit: rf.commitIndex,
 	}
 	rf.mu.Unlock()
 
@@ -229,8 +282,10 @@ func (rf *Raft) startElection() {
 	rf.votedFor = rf.me
 	go rf.electionTimeout()
 	args := &RequestVoteRequest{
-		Term:        rf.currentTerm,
-		CandidateId: rf.me,
+		Term:         rf.currentTerm,
+		CandidateId:  rf.me,
+		LastLogIndex: 0,
+		LastLogTerm:  0,
 	}
 	rf.mu.Unlock()
 
