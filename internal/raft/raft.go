@@ -28,20 +28,27 @@ type Raft struct {
 	currentTerm int
 	votedFor    int
 	peers       []string
-	timerCh     chan struct{}
+
+	timerChElection chan struct{}
+	// timerChHeartbeat	chan struct{}
+
+	commitIndex int
 
 	dead int32
 }
 
 func Make(peers []string, me int) *Raft {
 	rf := &Raft{
-		state:       Follower,
-		me:          me,
-		currentTerm: 0,
-		votedFor:    -1,
-		peers:       peers,
-		timerCh:     make(chan struct{}),
-		dead:        0,
+		state:           Follower,
+		me:              me,
+		currentTerm:     0,
+		votedFor:        -1,
+		peers:           peers,
+		timerChElection: make(chan struct{}),
+
+		commitIndex: 0,
+
+		dead: 0,
 	}
 
 	go rf.serve()
@@ -114,7 +121,7 @@ func (rf *Raft) electionTimeout() {
 			return
 		}
 		select {
-		case <-rf.timerCh:
+		case <-rf.timerChElection:
 			rf.mu.Lock()
 			if rf.state != Leader {
 				go rf.electionTimeout()
@@ -142,7 +149,6 @@ func (rf *Raft) electionTimeout() {
 				}
 				rf.mu.Unlock()
 				go rf.startElection()
-				go rf.electionTimeout()
 				return
 			}
 		}
@@ -156,6 +162,7 @@ func (rf *Raft) sendHeartbeats() {
 		LeaderId: rf.me,
 	}
 	rf.mu.Unlock()
+
 	start := time.Now()
 	timeout := time.Duration(25) * time.Millisecond
 
@@ -171,41 +178,48 @@ func (rf *Raft) sendHeartbeats() {
 		now := time.Now()
 		elapsed := now.Sub(start)
 		if elapsed >= timeout {
-			var wg sync.WaitGroup
-			for _, peer := range rf.peers {
-				if peer != rf.peers[rf.me] {
-					wg.Add(1)
-					go func(peer string) {
-						defer wg.Done()
-						var reply AppendEntriesResponse
-						if rf.sendAppendEntry(peer, args, &reply) {
-							rf.mu.Lock()
-							if reply.Term > rf.currentTerm && !reply.Success {
-								rf.state = Follower
-								rf.votedFor = -1
-								utils.Dprintf(
-									"[%d @ %s] (leader) heartbeat failed; reverting to follower\n",
-									rf.me,
-									rf.peers[rf.me],
-								)
-							}
-							rf.mu.Unlock()
-						}
-					}(peer)
-				}
-			}
-			wg.Wait() // check: does the leader have to wait for all responses?
-
-			rf.mu.Lock()
-			if rf.state == Follower {
-				go rf.electionTimeout()
-				rf.mu.Unlock()
+			if !rf.sendEmptyAppendEntries(args) {
 				return
 			}
-			rf.mu.Unlock()
 			start = now
 		}
 	}
+}
+
+func (rf *Raft) sendEmptyAppendEntries(args *AppendEntriesRequest) bool {
+	var wg sync.WaitGroup
+	for _, peer := range rf.peers {
+		if peer != rf.peers[rf.me] {
+			wg.Add(1)
+			go func(peer string) {
+				defer wg.Done()
+				var reply AppendEntriesResponse
+				if rf.sendAppendEntry(peer, args, &reply) {
+					rf.mu.Lock()
+					if reply.Term > rf.currentTerm && !reply.Success {
+						rf.state = Follower
+						rf.votedFor = -1
+						utils.Dprintf(
+							"[%d @ %s] (leader) heartbeat failed; reverting to follower\n",
+							rf.me,
+							rf.peers[rf.me],
+						)
+					}
+					rf.mu.Unlock()
+				}
+			}(peer)
+		}
+	}
+	wg.Wait()
+
+	rf.mu.Lock()
+	if rf.state == Follower {
+		go rf.electionTimeout()
+		rf.mu.Unlock()
+		return false
+	}
+	rf.mu.Unlock()
+	return true
 }
 
 func (rf *Raft) startElection() {
@@ -213,6 +227,7 @@ func (rf *Raft) startElection() {
 	rf.state = Candidate
 	rf.currentTerm += 1
 	rf.votedFor = rf.me
+	go rf.electionTimeout()
 	args := &RequestVoteRequest{
 		Term:        rf.currentTerm,
 		CandidateId: rf.me,
@@ -256,14 +271,13 @@ func (rf *Raft) startElection() {
 		cond.Wait()
 	}
 
-	utils.Dprintf(
-		"[%d @ %s] secured election; converting to leader\n",
-		rf.me,
-		rf.peers[rf.me],
-	)
-
-	rf.timerCh <- struct{}{}
+	rf.timerChElection <- struct{}{}
 	rf.state = Leader
+	argsNew := &AppendEntriesRequest{
+		Term:     rf.currentTerm,
+		LeaderId: rf.me,
+	}
+	go rf.sendEmptyAppendEntries(argsNew)
 	go rf.sendHeartbeats()
 	rf.mu.Unlock()
 }
@@ -335,7 +349,7 @@ func (rf *Raft) HandleAppendEntry(
 		return nil
 	}
 
-	rf.timerCh <- struct{}{}
+	rf.timerChElection <- struct{}{}
 	rf.state = Follower
 	rf.currentTerm = AppendEntryReq.Term
 
@@ -399,7 +413,7 @@ func (rf *Raft) HandleRequestVote(
 
 	RequestVoteRes.Term = rf.currentTerm
 	if RequestVoteRes.VoteGranted {
-		rf.timerCh <- struct{}{}
+		rf.timerChElection <- struct{}{}
 	}
 	return nil
 }
