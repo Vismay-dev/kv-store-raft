@@ -16,9 +16,6 @@ jobs:
         with:
           go-version: "1.22.3" # Specify your Go version here
 
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
-
       - name: Run tests
         run: go test ./... -v -race
 
