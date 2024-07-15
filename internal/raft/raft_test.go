@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"log"
 	"math/rand"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ func TestRaft(t *testing.T) {
 	for testName, testFunc := range map[string]TestCase{
 		"TestLeaderElectionNormal":           testLeaderElectionNormal,
 		"TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
+		// "TestLogReplicationNormal": testLogReplicationNormal,
 	} {
 		t.Run(testName, func(t *testing.T) {
 			testFunc(t, raftNodes, peerAddrs)
@@ -31,10 +33,51 @@ func testLeaderElectionNormal(t *testing.T, raftNodes []*Raft, peerAddrs []strin
 	checkTermEquality(t, raftNodes)
 }
 
+func testLogReplicationNormal(t *testing.T, raftNodes []*Raft, peerAddrs []string) {
+	// log.Fatal("vismay")
+
+	var term int
+
+	raftNodes[0].mu.Lock()
+	term = raftNodes[0].currentTerm
+	raftNodes[0].mu.Unlock()
+
+	entries := []interface{}{
+		map[string]interface{}{
+			"data": "this should be the first",
+			"term": term,
+		},
+		map[string]interface{}{
+			"data": "this should be the second",
+			"term": term,
+		},
+		map[string]interface{}{
+			"data": "this should be the third",
+			"term": term,
+		},
+		map[string]interface{}{
+			"data": "this should be the fourth",
+			"term": term,
+		},
+	}
+
+	if err := ClientSendData(entries); err != nil {
+		t.Errorf("Error sending client request to raft: %s", err)
+	}
+
+	time.Sleep(2 * time.Second)
+
+	// Check for exactly 1 leader
+	checkLeaderElection(t, raftNodes)
+	// Check for equality of terms across nodes
+	checkTermEquality(t, raftNodes)
+}
+
 func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, peerAddrs []string) {
 	randNode := raftNodes[rand.Intn(len(raftNodes))]
 
 	// log.Printf("[==tester==] Killing random raft node (%d @ %s)", randNode.me, peerAddrs[randNode.me])
+	log.Printf("[==tester==] Killing random raft node")
 	randNode.Kill()
 
 	time.Sleep(2 * time.Second)
@@ -43,6 +86,7 @@ func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, peerAdd
 	time.Sleep(2 * time.Second)
 
 	// log.Printf("[==tester==] Reviving random raft node (%d @ %s)", randNode.me, peerAddrs[randNode.me])
+	log.Printf("[==tester==] Reviving random raft node")
 	randNode.Revive()
 
 	time.Sleep(2 * time.Second)
@@ -60,6 +104,7 @@ func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, peerAdd
 	}
 
 	// log.Printf("[==tester==] Killling leader raft node (%d @ %s)", leaderNode.me, peerAddrs[leaderNode.me])
+	log.Printf("[==tester==] Killling leader raft node")
 	leaderNode.Kill()
 
 	time.Sleep(2 * time.Second)
@@ -68,6 +113,7 @@ func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, peerAdd
 	time.Sleep(2 * time.Second)
 
 	// log.Printf("[==tester==] Reviving former leader raft node (%d @ %s)", leaderNode.me, peerAddrs[leaderNode.me])
+	log.Printf("[==tester==] Reviving former leader raft node")
 	leaderNode.Revive()
 
 	time.Sleep(2 * time.Second)
@@ -92,6 +138,7 @@ func checkLeaderElection(t *testing.T, raftNodes []*Raft) {
 		}
 		rf.mu.Unlock()
 	}
+
 	if leaderCnt != 1 {
 		t.Errorf("Failed Leader Election; expected 1 leader, got %d", leaderCnt)
 	}
@@ -117,10 +164,12 @@ func checkTermEquality(t *testing.T, raftNodes []*Raft) {
 	}
 }
 
+// func checkLogConsistency(t *testing.T, raftNodes []*Raft) {
+
+// }
+
 func setup(t *testing.T) ([]*Raft, []string) {
 	t.Helper()
-
-	// utils.Debug.Store(1)
 
 	peerAddresses := []string{":8000", ":8001", ":8002", ":8003", ":8004"}
 	raftNodes := []*Raft{}

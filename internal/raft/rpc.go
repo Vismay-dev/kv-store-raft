@@ -17,7 +17,7 @@ type AppendEntriesRequest struct {
 	LeaderId     int
 	PrevLogIndex int
 	PrevLogTerm  int
-	Entries      []LogEntry
+	Entries      []interface{}
 	LeaderCommit int
 }
 
@@ -27,7 +27,7 @@ type AppendEntriesResponse struct {
 }
 
 type ClientReqRequest struct {
-	Entry LogEntry
+	Entries []interface{}
 }
 
 type ClientReqResponse struct {

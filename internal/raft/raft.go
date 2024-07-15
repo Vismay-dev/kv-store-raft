@@ -23,8 +23,8 @@ const (
 
 // TODO:
 
-// 1) Accept client request to random node and redirect to leader
-// 2) Leader: appends new entries to log
+// 1) Accept client request to random node and redirect to leader [x]
+// 2) Leader: appends new entries to log [x]
 // 3) Leader: issues AppendEntries RPCs to followers
 // 4) Leader: checks to see if entries have been safely replicated on majority
 // if the AppendEntries RPC has failed on any follower continue retrying indefinitely
@@ -59,10 +59,10 @@ const (
 // - for leader: if there exists and index N such that N > commitIndex and a majority of matchIndex[i] >= N
 // and log[N].term == currentTerm, then set commitIndex == N (yep no clue here, read 5.3, 5.4 ig)
 
-type LogEntry struct {
-	// data  	string
-	// term  	string
-}
+// type LogEntry struct {
+// 	data  	string
+// 	term  	int
+// }
 
 type Raft struct {
 	mu              sync.Mutex
@@ -73,11 +73,12 @@ type Raft struct {
 	peers           []string
 	timerChElection chan struct{}
 
-	log         []LogEntry
+	log         []interface{}
 	commitIndex int
 	lastApplied int
 	nextIndex   []int
 	matchIndex  []int
+	leaderId    int
 
 	dead int32
 }
@@ -91,7 +92,7 @@ func Make(peers []string, me int) *Raft {
 		peers:           peers,
 		timerChElection: make(chan struct{}),
 
-		log:         []LogEntry{},
+		log:         make([]interface{}, 0),
 		commitIndex: 0,
 		lastApplied: 0,
 		nextIndex:   []int{},
@@ -215,7 +216,7 @@ func (rf *Raft) sendHeartbeats() {
 		LeaderId:     rf.me,
 		PrevLogIndex: 0,
 		PrevLogTerm:  0,
-		Entries:      rf.log,
+		Entries:      make([]interface{}, 0),
 		LeaderCommit: rf.commitIndex,
 	}
 	rf.mu.Unlock()
@@ -235,7 +236,7 @@ func (rf *Raft) sendHeartbeats() {
 		now := time.Now()
 		elapsed := now.Sub(start)
 		if elapsed >= timeout {
-			if !rf.sendEmptyAppendEntries(args) {
+			if !rf.sendAppendEntries(args) {
 				return
 			}
 			start = now
@@ -243,7 +244,7 @@ func (rf *Raft) sendHeartbeats() {
 	}
 }
 
-func (rf *Raft) sendEmptyAppendEntries(args *AppendEntriesRequest) bool {
+func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) bool {
 	var wg sync.WaitGroup
 	for _, peer := range rf.peers {
 		if peer != rf.peers[rf.me] {
@@ -334,11 +335,16 @@ func (rf *Raft) startElection() {
 	rf.timerChElection <- struct{}{}
 	rf.state = Leader
 	argsNew := &AppendEntriesRequest{
-		Term:     rf.currentTerm,
-		LeaderId: rf.me,
+		Term:         rf.currentTerm,
+		LeaderId:     rf.me,
+		PrevLogIndex: 0,
+		PrevLogTerm:  0,
+		Entries:      make([]interface{}, 0),
+		LeaderCommit: rf.commitIndex,
 	}
+	rf.nextIndex = []int{0, 0, 0, 0, 0}
 	rf.mu.Unlock()
-	go rf.sendEmptyAppendEntries(argsNew)
+	rf.sendAppendEntries(argsNew)
 	go rf.sendHeartbeats()
 }
 
@@ -416,6 +422,7 @@ func (rf *Raft) HandleAppendEntry(
 	rf.timerChElection <- struct{}{}
 	rf.state = Follower
 	rf.currentTerm = AppendEntryReq.Term
+	rf.leaderId = AppendEntryReq.LeaderId
 
 	utils.Dprintf(
 		"[%d @ %s] received AppendEntry RPC from leader %d\n",
@@ -479,5 +486,54 @@ func (rf *Raft) HandleRequestVote(
 	if RequestVoteRes.VoteGranted {
 		rf.timerChElection <- struct{}{}
 	}
+	return nil
+}
+
+func (rf *Raft) SendData(
+	ClientReqReq *ClientReqRequest,
+	ClientReqRes *ClientReqResponse,
+) error {
+	if rf.killed() {
+		return fmt.Errorf("node is dead")
+	}
+
+	rf.mu.Lock()
+	if rf.state != Leader {
+		var peer string
+		for i, rfPeer := range rf.peers {
+			if i == rf.leaderId {
+				peer = rfPeer
+			}
+		}
+		rpcname := fmt.Sprintf("Raft-%d.SendData", rf.leaderId)
+		rf.mu.Unlock()
+		if !rf.call(peer, rpcname, ClientReqReq, ClientReqRes) {
+			return fmt.Errorf("error forward request to leader node")
+		}
+	} else {
+		rf.log = append(rf.log, ClientReqReq.Entries...)
+		rf.mu.Unlock()
+		for i, peer := range rf.peers {
+			if peer != rf.peers[rf.me] {
+				go func(peer string) {
+					args := &AppendEntriesRequest{
+						Term:         rf.currentTerm,
+						LeaderId:     rf.me,
+						PrevLogIndex: 0,
+						PrevLogTerm:  0,
+						Entries:      rf.log[rf.nextIndex[i]:],
+						LeaderCommit: rf.commitIndex,
+					}
+					var reply AppendEntriesResponse
+					if rf.sendAppendEntry(peer, args, &reply) {
+						// rf.mu.Lock()
+						// rf.mu.Unlock()
+						log.Printf("%+v\n", reply)
+					}
+				}(peer)
+			}
+		}
+	}
+
 	return nil
 }
