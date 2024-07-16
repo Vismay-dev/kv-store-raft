@@ -11,7 +11,6 @@ type RequestVoteResponse struct {
 	Term        int
 	VoteGranted bool
 }
-
 type AppendEntriesRequest struct {
 	Term         int
 	LeaderId     int
@@ -29,7 +28,7 @@ type AppendEntriesResponse struct {
 type ClientReqRequest struct {
 	Entries []map[string]interface{}
 }
-
 type ClientReqResponse struct {
-	Success bool
+	CommitIndex int
+	Success     bool
 }

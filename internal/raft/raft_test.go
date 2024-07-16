@@ -5,8 +5,6 @@ import (
 	"math/rand"
 	"testing"
 	"time"
-
-	"github.com/vismaysur/kv-store-raft/internal/raft/utils"
 )
 
 type TestCase func(t *testing.T, raftNodes []*Raft, peerAddresses []string)
@@ -17,8 +15,8 @@ func TestRaft(t *testing.T) {
 	raftNodes, peerAddrs := setup(t)
 	for testName, testFunc := range map[string]TestCase{
 		"TestLeaderElectionNormal": testLeaderElectionNormal,
-		// "TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
 		"TestLogReplicationNormal": testLogReplicationNormal,
+		// "TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
 	} {
 		t.Run(testName, func(t *testing.T) {
 			testFunc(t, raftNodes, peerAddrs)
@@ -61,7 +59,8 @@ func testLogReplicationNormal(t *testing.T, raftNodes []*Raft, peerAddrs []strin
 		},
 	}
 
-	if err := ClientSendData(entries); err != nil {
+	res, err := ClientSendData(entries)
+	if err != nil {
 		t.Errorf("Error sending client request to raft: %s", err)
 	}
 
@@ -73,8 +72,8 @@ func testLogReplicationNormal(t *testing.T, raftNodes []*Raft, peerAddrs []strin
 	checkTermEquality(t, raftNodes)
 	// Check for complete equality of logs across nodes
 	checkLogConsistency(t, raftNodes)
-
-	// panic("here")
+	// Check for committed
+	checkCommitted(t, raftNodes, res.CommitIndex)
 }
 
 func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, peerAddrs []string) {
@@ -111,7 +110,7 @@ func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, peerAdd
 	log.Printf("[==tester==] Killling leader raft node")
 	leaderNode.Kill()
 
-	utils.Debug.Store(1)
+	// utils.Debug.Store(1)
 	// go func() {
 	// 	go utils.LogStackTraces(2 * time.Second)
 	// 	time.Sleep(5 * time.Second)
@@ -120,16 +119,16 @@ func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, peerAdd
 
 	time.Sleep(2 * time.Second)
 	checkLeaderElection(t, raftNodes)
-	// checkTermEquality(t, raftNodes)
+	checkTermEquality(t, raftNodes)
 	time.Sleep(2 * time.Second)
 
-	// // log.Printf("[==tester==] Reviving former leader raft node (%d @ %s)", leaderNode.me, peerAddrs[leaderNode.me])
-	// log.Printf("[==tester==] Reviving former leader raft node")
-	// leaderNode.Revive()
+	// log.Printf("[==tester==] Reviving former leader raft node (%d @ %s)", leaderNode.me, peerAddrs[leaderNode.me])
+	log.Printf("[==tester==] Reviving former leader raft node")
+	leaderNode.Revive()
 
-	// time.Sleep(2 * time.Second)
-	// checkLeaderElection(t, raftNodes)
-	// checkTermEquality(t, raftNodes)
+	time.Sleep(2 * time.Second)
+	checkLeaderElection(t, raftNodes)
+	checkTermEquality(t, raftNodes)
 }
 
 // helpers / unit tests
@@ -186,6 +185,18 @@ func checkLogConsistency(t *testing.T, raftNodes []*Raft) {
 		node.mu.Lock()
 		if !areEqual(log, node.log) {
 			t.Errorf("logs differ across nodes; comparing nodes 0 and %d", node.me)
+		}
+		node.mu.Unlock()
+	}
+}
+
+func checkCommitted(t *testing.T, raftNodes []*Raft, commitIndex int) {
+	t.Helper()
+
+	for _, node := range raftNodes[:] {
+		node.mu.Lock()
+		if node.commitIndex != commitIndex {
+			t.Errorf("commit index differs across nodes; comparing leader (%d) and %d (%d)", commitIndex, node.me, node.commitIndex)
 		}
 		node.mu.Unlock()
 	}

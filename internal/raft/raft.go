@@ -25,8 +25,8 @@ const (
 
 // 1) Accept client request to random node and redirect to leader [x]
 // 2) Leader: appends new entries to log [x]
-// 3) Leader: issues AppendEntries RPCs to followers
-// 4) Leader: checks to see if entries have been safely replicated on majority
+// 3) Leader: issues AppendEntries RPCs to followers [x]
+// 4) Leader: checks to see if entries have been safely replicated on majority [x]
 // if the AppendEntries RPC has failed on any follower continue retrying indefinitely
 // if condition is met, proceed, but continue retrying in background ?? check this properly
 // differentiate between rpc failing and follower being "killed"; if killed give up
@@ -72,6 +72,7 @@ type Raft struct {
 	votedFor        int
 	peers           []string
 	timerChElection chan struct{}
+	timerChHb       chan struct{}
 
 	log         []map[string]interface{}
 	commitIndex int
@@ -90,7 +91,8 @@ func Make(peers []string, me int) *Raft {
 		currentTerm:     0,
 		votedFor:        -1,
 		peers:           peers,
-		timerChElection: make(chan struct{}),
+		timerChElection: make(chan struct{}, 1),
+		timerChHb:       make(chan struct{}, 1),
 
 		log:         make([]map[string]interface{}, 0),
 		commitIndex: 0,
@@ -210,40 +212,44 @@ func (rf *Raft) electionTimeout() {
 }
 
 func (rf *Raft) sendHeartbeats() {
-	rf.mu.Lock()
-	args := &AppendEntriesRequest{
-		Term:         rf.currentTerm,
-		LeaderId:     rf.me,
-		PrevLogIndex: 0,
-		PrevLogTerm:  0,
-		Entries:      make([]map[string]interface{}, 0),
-		LeaderCommit: rf.commitIndex,
-	}
-	rf.mu.Unlock()
-
 	start := time.Now()
 	timeout := time.Duration(40) * time.Millisecond
 
 	for {
-		rf.mu.Lock()
-		if rf.killed() {
-			utils.Dprintf(
-				"[%d @ %s] node is dead; try heartbeat again later\n",
-				rf.me,
-				rf.peers[rf.me],
-			)
+		select {
+		case <-rf.timerChHb:
+			go rf.sendHeartbeats()
 			return
-		}
-		rf.mu.Unlock()
-		now := time.Now()
-		elapsed := now.Sub(start)
-		if elapsed >= timeout {
-			if !rf.sendAppendEntries(args) {
-				go rf.electionTimeout()
+		default:
+			rf.mu.Lock()
+			args := &AppendEntriesRequest{
+				Term:         rf.currentTerm,
+				LeaderId:     rf.me,
+				PrevLogIndex: 0,
+				PrevLogTerm:  0,
+				Entries:      make([]map[string]interface{}, 0),
+				LeaderCommit: rf.commitIndex,
+			}
+			if rf.killed() {
+				utils.Dprintf(
+					"[%d @ %s] node is dead; try heartbeat again later\n",
+					rf.me,
+					rf.peers[rf.me],
+				)
 				return
 			}
-			start = now
+			rf.mu.Unlock()
+			now := time.Now()
+			elapsed := now.Sub(start)
+			if elapsed >= timeout {
+				if !rf.sendAppendEntries(args) {
+					go rf.electionTimeout()
+					return
+				}
+				start = now
+			}
 		}
+
 	}
 }
 
@@ -448,19 +454,19 @@ func (rf *Raft) HandleAppendEntry(
 			return nil
 		}
 		rf.log = append(rf.log, AppendEntryReq.Entries...)
+		rf.timerChHb <- struct{}{}
+		utils.Dprintf(
+			"[%d @ %s] log added succesfully\n",
+			rf.me,
+			rf.peers[rf.me],
+		)
 	}
 
 	rf.timerChElection <- struct{}{}
 	rf.state = Follower
 	rf.currentTerm = AppendEntryReq.Term
 	rf.leaderId = AppendEntryReq.LeaderId
-
-	utils.Dprintf(
-		"[%d @ %s] received AppendEntry RPC from leader %d\n",
-		rf.me,
-		rf.peers[rf.me],
-		AppendEntryReq.LeaderId,
-	)
+	rf.commitIndex = min(AppendEntryReq.LeaderCommit, len(rf.log))
 
 	AppendEntryRes.Term = rf.currentTerm
 	AppendEntryRes.Success = true
@@ -527,7 +533,6 @@ func (rf *Raft) SendData(
 	if rf.killed() {
 		return fmt.Errorf("node is dead")
 	}
-
 	rf.mu.Lock()
 	if rf.state != Leader {
 		var peer string
@@ -543,31 +548,44 @@ func (rf *Raft) SendData(
 		}
 	} else {
 		rf.log = append(rf.log, ClientReqReq.Entries...)
+		var commitIndex int = rf.commitIndex
 		rf.mu.Unlock()
-		var wg sync.WaitGroup
+		var replicationCount int32 = 1
 		for i, peer := range rf.peers {
 			if peer != rf.peers[rf.me] {
-				wg.Add(1)
 				go func(peer string) {
-					defer wg.Done()
+					rf.mu.Lock()
 					args := &AppendEntriesRequest{
 						Term:         rf.currentTerm,
 						LeaderId:     rf.me,
 						PrevLogIndex: 0,
 						PrevLogTerm:  0,
 						Entries:      rf.log[rf.nextIndex[i]:],
-						LeaderCommit: rf.commitIndex,
+						LeaderCommit: commitIndex,
 					}
+					rf.mu.Unlock()
 					var reply AppendEntriesResponse
 					if rf.sendAppendEntry(peer, args, &reply) {
-						// rf.mu.Lock()
-						// rf.mu.Unlock()
+						atomic.AddInt32(&replicationCount, 1)
 					}
 				}(peer)
 			}
 		}
-		wg.Wait()
-	}
 
+		for atomic.LoadInt32(&replicationCount) < int32(len(rf.peers)/2) {
+		}
+
+		rf.mu.Lock()
+		rf.commitIndex = len(rf.log)
+		ClientReqRes.CommitIndex = rf.commitIndex
+		rf.mu.Unlock()
+
+		ClientReqRes.Success = true
+		utils.Dprintf(
+			"[%d @ %s] commit succesful\n",
+			rf.me,
+			rf.peers[rf.me],
+		)
+	}
 	return nil
 }
