@@ -254,9 +254,13 @@ func (rf *Raft) sendHeartbeats() {
 }
 
 func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) bool {
+	var peerAddrs []string
+	rf.mu.Lock()
+	peerAddrs = rf.peers
+	rf.mu.Unlock()
 	var wg sync.WaitGroup
-	for _, peer := range rf.peers {
-		if peer != rf.peers[rf.me] {
+	for _, peer := range peerAddrs {
+		if peer != peerAddrs[rf.me] {
 			wg.Add(1)
 			go func(peer string) {
 				defer wg.Done()
@@ -288,6 +292,8 @@ func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) bool {
 }
 
 func (rf *Raft) startElection() {
+	var peerAddrs []string
+
 	rf.mu.Lock()
 	rf.state = Candidate
 	rf.currentTerm += 1
@@ -298,15 +304,15 @@ func (rf *Raft) startElection() {
 		LastLogIndex: 0,
 		LastLogTerm:  0,
 	}
+	peerAddrs = rf.peers
 	rf.mu.Unlock()
 
 	go rf.electionTimeout()
 
 	var votes int32 = 1
-	cond := sync.NewCond(&rf.mu)
 
-	for _, peer := range rf.peers {
-		if peer != rf.peers[rf.me] {
+	for _, peer := range peerAddrs {
+		if peer != peerAddrs[rf.me] {
 			go func(peer string) {
 				var reply RequestVoteResponse
 				if rf.sendRequestVote(peer, args, &reply) {
@@ -318,7 +324,6 @@ func (rf *Raft) startElection() {
 					} else if reply.Term == rf.currentTerm && reply.VoteGranted {
 						atomic.AddInt32(&votes, 1)
 					}
-					cond.Broadcast()
 					rf.mu.Unlock()
 				}
 			}(peer)
@@ -338,7 +343,6 @@ func (rf *Raft) startElection() {
 		}
 		rf.mu.Unlock()
 		time.Sleep(10 * time.Millisecond)
-		// cond.Wait()
 	}
 
 	rf.mu.Lock()
@@ -392,11 +396,16 @@ func (rf *Raft) call(peer, rpcname string, req interface{}, res interface{}) boo
 	}
 	defer conn.Close()
 
+	rf.mu.Lock()
+	var id int = rf.me
+	var address string = rf.peers[rf.me]
+	rf.mu.Unlock()
+
 	client := rpc.NewClient(conn)
 	if err := client.Call(rpcname, req, res); err != nil {
 		utils.Dprintf(
 			"[%d @ %s] RPC call to [%s] failed: %s",
-			rf.me, rf.peers[rf.me],
+			id, address,
 			peer,
 			err,
 		)
