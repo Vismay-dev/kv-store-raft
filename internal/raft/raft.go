@@ -73,7 +73,7 @@ type Raft struct {
 	peers           []string
 	timerChElection chan struct{}
 
-	log         []interface{}
+	log         []map[string]interface{}
 	commitIndex int
 	lastApplied int
 	nextIndex   []int
@@ -92,7 +92,7 @@ func Make(peers []string, me int) *Raft {
 		peers:           peers,
 		timerChElection: make(chan struct{}),
 
-		log:         make([]interface{}, 0),
+		log:         make([]map[string]interface{}, 0),
 		commitIndex: 0,
 		lastApplied: 0,
 		nextIndex:   []int{},
@@ -216,7 +216,7 @@ func (rf *Raft) sendHeartbeats() {
 		LeaderId:     rf.me,
 		PrevLogIndex: 0,
 		PrevLogTerm:  0,
-		Entries:      make([]interface{}, 0),
+		Entries:      make([]map[string]interface{}, 0),
 		LeaderCommit: rf.commitIndex,
 	}
 	rf.mu.Unlock()
@@ -225,6 +225,7 @@ func (rf *Raft) sendHeartbeats() {
 	timeout := time.Duration(40) * time.Millisecond
 
 	for {
+		rf.mu.Lock()
 		if rf.killed() {
 			utils.Dprintf(
 				"[%d @ %s] node is dead; try heartbeat again later\n",
@@ -233,10 +234,12 @@ func (rf *Raft) sendHeartbeats() {
 			)
 			return
 		}
+		rf.mu.Unlock()
 		now := time.Now()
 		elapsed := now.Sub(start)
 		if elapsed >= timeout {
 			if !rf.sendAppendEntries(args) {
+				go rf.electionTimeout()
 				return
 			}
 			start = now
@@ -271,12 +274,10 @@ func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) bool {
 	wg.Wait()
 
 	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	if rf.state == Follower {
-		rf.mu.Unlock()
-		go rf.electionTimeout()
 		return false
 	}
-	rf.mu.Unlock()
 	return true
 }
 
@@ -318,8 +319,8 @@ func (rf *Raft) startElection() {
 		}
 	}
 
-	rf.mu.Lock()
 	for votes <= int32(len(rf.peers)/2) {
+		rf.mu.Lock()
 		if rf.state != Candidate {
 			utils.Dprintf(
 				"[%d @ %s] unqualified to become leader; quitting election\n",
@@ -329,9 +330,12 @@ func (rf *Raft) startElection() {
 			rf.mu.Unlock()
 			return
 		}
-		cond.Wait()
+		rf.mu.Unlock()
+		time.Sleep(10 * time.Millisecond)
+		// cond.Wait()
 	}
 
+	rf.mu.Lock()
 	rf.timerChElection <- struct{}{}
 	rf.state = Leader
 	argsNew := &AppendEntriesRequest{
@@ -339,7 +343,7 @@ func (rf *Raft) startElection() {
 		LeaderId:     rf.me,
 		PrevLogIndex: 0,
 		PrevLogTerm:  0,
-		Entries:      make([]interface{}, 0),
+		Entries:      make([]map[string]interface{}, 0),
 		LeaderCommit: rf.commitIndex,
 	}
 	rf.nextIndex = []int{0, 0, 0, 0, 0}
@@ -409,7 +413,7 @@ func (rf *Raft) HandleAppendEntry(
 
 	if rf.currentTerm > AppendEntryReq.Term {
 		utils.Dprintf(
-			"[%d @ %s] rejecting AppendEntry RPC from leader %d\n",
+			"[%d @ %s] rejecting AppendEntry RPC from leader - - - %d\n",
 			rf.me,
 			rf.peers[rf.me],
 			AppendEntryReq.LeaderId,
@@ -417,6 +421,33 @@ func (rf *Raft) HandleAppendEntry(
 		AppendEntryRes.Term = rf.currentTerm
 		AppendEntryRes.Success = false
 		return nil
+	}
+
+	if len(AppendEntryReq.Entries) > 0 {
+		if AppendEntryReq.PrevLogIndex == 0 && len(rf.log) > 0 {
+			utils.Dprintf(
+				"[%d @ %s] rejecting AppendEntry RPC from leader - - %d\n",
+				rf.me,
+				rf.peers[rf.me],
+				AppendEntryReq.LeaderId,
+			)
+			AppendEntryRes.Term = rf.currentTerm
+			AppendEntryRes.Success = false
+			return nil
+		}
+		if (AppendEntryReq.PrevLogIndex > 0 && len(rf.log) < AppendEntryReq.PrevLogIndex) ||
+			(AppendEntryReq.PrevLogIndex > 0 && rf.log[AppendEntryReq.PrevLogIndex]["term"] != AppendEntryReq.PrevLogTerm) {
+			utils.Dprintf(
+				"[%d @ %s] rejecting AppendEntry RPC from leader - %d\n",
+				rf.me,
+				rf.peers[rf.me],
+				AppendEntryReq.LeaderId,
+			)
+			AppendEntryRes.Term = rf.currentTerm
+			AppendEntryRes.Success = false
+			return nil
+		}
+		rf.log = append(rf.log, AppendEntryReq.Entries...)
 	}
 
 	rf.timerChElection <- struct{}{}
@@ -513,9 +544,12 @@ func (rf *Raft) SendData(
 	} else {
 		rf.log = append(rf.log, ClientReqReq.Entries...)
 		rf.mu.Unlock()
+		var wg sync.WaitGroup
 		for i, peer := range rf.peers {
 			if peer != rf.peers[rf.me] {
+				wg.Add(1)
 				go func(peer string) {
+					defer wg.Done()
 					args := &AppendEntriesRequest{
 						Term:         rf.currentTerm,
 						LeaderId:     rf.me,
@@ -528,11 +562,11 @@ func (rf *Raft) SendData(
 					if rf.sendAppendEntry(peer, args, &reply) {
 						// rf.mu.Lock()
 						// rf.mu.Unlock()
-						log.Printf("%+v\n", reply)
 					}
 				}(peer)
 			}
 		}
+		wg.Wait()
 	}
 
 	return nil

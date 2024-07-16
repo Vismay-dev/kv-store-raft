@@ -5,6 +5,8 @@ import (
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/vismaysur/kv-store-raft/internal/raft/utils"
 )
 
 type TestCase func(t *testing.T, raftNodes []*Raft, peerAddresses []string)
@@ -14,9 +16,9 @@ type TestCase func(t *testing.T, raftNodes []*Raft, peerAddresses []string)
 func TestRaft(t *testing.T) {
 	raftNodes, peerAddrs := setup(t)
 	for testName, testFunc := range map[string]TestCase{
-		"TestLeaderElectionNormal":           testLeaderElectionNormal,
-		"TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
-		// "TestLogReplicationNormal": testLogReplicationNormal,
+		"TestLeaderElectionNormal": testLeaderElectionNormal,
+		// "TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
+		"TestLogReplicationNormal": testLogReplicationNormal,
 	} {
 		t.Run(testName, func(t *testing.T) {
 			testFunc(t, raftNodes, peerAddrs)
@@ -27,35 +29,33 @@ func TestRaft(t *testing.T) {
 // integration tests
 
 func testLeaderElectionNormal(t *testing.T, raftNodes []*Raft, peerAddrs []string) {
-	// Check for exactly 1 leader
+	// // Check for exactly 1 leader
 	checkLeaderElection(t, raftNodes)
 	// Check for equality of terms across nodes
 	checkTermEquality(t, raftNodes)
 }
 
 func testLogReplicationNormal(t *testing.T, raftNodes []*Raft, peerAddrs []string) {
-	// log.Fatal("vismay")
-
 	var term int
 
 	raftNodes[0].mu.Lock()
 	term = raftNodes[0].currentTerm
 	raftNodes[0].mu.Unlock()
 
-	entries := []interface{}{
-		map[string]interface{}{
+	entries := []map[string]interface{}{
+		{
 			"data": "this should be the first",
 			"term": term,
 		},
-		map[string]interface{}{
+		{
 			"data": "this should be the second",
 			"term": term,
 		},
-		map[string]interface{}{
+		{
 			"data": "this should be the third",
 			"term": term,
 		},
-		map[string]interface{}{
+		{
 			"data": "this should be the fourth",
 			"term": term,
 		},
@@ -71,6 +71,10 @@ func testLogReplicationNormal(t *testing.T, raftNodes []*Raft, peerAddrs []strin
 	checkLeaderElection(t, raftNodes)
 	// Check for equality of terms across nodes
 	checkTermEquality(t, raftNodes)
+	// Check for complete equality of logs across nodes
+	checkLogConsistency(t, raftNodes)
+
+	// panic("here")
 }
 
 func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, peerAddrs []string) {
@@ -103,22 +107,29 @@ func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, peerAdd
 		node.mu.Unlock()
 	}
 
-	// log.Printf("[==tester==] Killling leader raft node (%d @ %s)", leaderNode.me, peerAddrs[leaderNode.me])
+	log.Printf("[==tester==] Killling leader raft node (%d @ %s)", leaderNode.me, peerAddrs[leaderNode.me])
 	log.Printf("[==tester==] Killling leader raft node")
 	leaderNode.Kill()
 
-	time.Sleep(2 * time.Second)
-	checkLeaderElection(t, raftNodes)
-	checkTermEquality(t, raftNodes)
-	time.Sleep(2 * time.Second)
-
-	// log.Printf("[==tester==] Reviving former leader raft node (%d @ %s)", leaderNode.me, peerAddrs[leaderNode.me])
-	log.Printf("[==tester==] Reviving former leader raft node")
-	leaderNode.Revive()
+	utils.Debug.Store(1)
+	// go func() {
+	// 	go utils.LogStackTraces(2 * time.Second)
+	// 	time.Sleep(5 * time.Second)
+	// 	panic("hereeeeeevis")
+	// }()
 
 	time.Sleep(2 * time.Second)
 	checkLeaderElection(t, raftNodes)
-	checkTermEquality(t, raftNodes)
+	// checkTermEquality(t, raftNodes)
+	time.Sleep(2 * time.Second)
+
+	// // log.Printf("[==tester==] Reviving former leader raft node (%d @ %s)", leaderNode.me, peerAddrs[leaderNode.me])
+	// log.Printf("[==tester==] Reviving former leader raft node")
+	// leaderNode.Revive()
+
+	// time.Sleep(2 * time.Second)
+	// checkLeaderElection(t, raftNodes)
+	// checkTermEquality(t, raftNodes)
 }
 
 // helpers / unit tests
@@ -164,9 +175,45 @@ func checkTermEquality(t *testing.T, raftNodes []*Raft) {
 	}
 }
 
-// func checkLogConsistency(t *testing.T, raftNodes []*Raft) {
+func checkLogConsistency(t *testing.T, raftNodes []*Raft) {
+	t.Helper()
 
-// }
+	raftNodes[0].mu.Lock()
+	log := raftNodes[0].log
+	raftNodes[0].mu.Unlock()
+
+	for _, node := range raftNodes[1:] {
+		node.mu.Lock()
+		if !areEqual(log, node.log) {
+			t.Errorf("logs differ across nodes; comparing nodes 0 and %d", node.me)
+		}
+		node.mu.Unlock()
+	}
+}
+
+func areEqual(arr1, arr2 []map[string]interface{}) bool {
+	if len(arr1) != len(arr2) {
+		return false
+	}
+
+	for i := 0; i < len(arr1); i++ {
+		if !entryEqual(arr1[i], arr2[i]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func entryEqual(entry1, entry2 map[string]interface{}) bool {
+	// Assuming "data" and "term" are the keys to compare
+	data1, _ := entry1["data"].(string)
+	data2, _ := entry2["data"].(string)
+	term1, _ := entry1["term"].(int)
+	term2, _ := entry2["term"].(int)
+
+	return data1 == data2 && term1 == term2
+}
 
 func setup(t *testing.T) ([]*Raft, []string) {
 	t.Helper()

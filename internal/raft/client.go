@@ -11,7 +11,7 @@ func init() {
 	gob.Register(map[string]interface{}{})
 }
 
-func ClientSendData(entries []interface{}) error {
+func ClientSendData(entries []map[string]interface{}) error {
 	conn, err := net.Dial("tcp", ":8000")
 	if err != nil {
 		return fmt.Errorf("error dialing IP address via TCP: %s", err)
