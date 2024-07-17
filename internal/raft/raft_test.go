@@ -92,7 +92,7 @@ func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 	if err != nil {
 		t.Errorf("Error sending client request to raft: %s", err)
 	}
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	// Check for exactly 1 leader
 	checkLeaderElection(t, raftNodes)
@@ -129,7 +129,7 @@ func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 		randNode.log = randNode.log[:2]
 		randNode.commitIndex = 2
 	})
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	// Check for exactly 1 leader
 	checkLeaderElection(t, raftNodes)
@@ -153,7 +153,7 @@ func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 	////
 	////
 
-	// ensuring randnode isn't a leader node
+	// // ensuring randnode isn't a leader node
 	// randNode = raftNodes[rand.Intn(len(raftNodes))]
 	// randNode.withLock(func() {
 	// 	randNodeState = randNode.state
@@ -175,6 +175,7 @@ func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 	// checkLeaderElection(t, raftNodes)
 	// // Check for equality of terms across nodes
 	// checkTermEquality(t, raftNodes)
+	// panic("here")
 	// // Check for complete equality of logs across nodes
 	// checkLogConsistency(t, raftNodes)
 	// // Check for committed

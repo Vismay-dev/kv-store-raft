@@ -8,7 +8,7 @@ Scalable and fault-tolerant distributed key-value store implementing the Raft co
 
 To run tests, use the following command:
 
-```
+```sh
 make test
 ```
 
