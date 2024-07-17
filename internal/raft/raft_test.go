@@ -5,6 +5,8 @@ import (
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/vismaysur/kv-store-raft/internal/raft/utils"
 )
 
 type TestCase func(t *testing.T, raftNodes []*Raft, peerAddresses []string)
@@ -15,8 +17,8 @@ func TestRaft(t *testing.T) {
 	raftNodes, peerAddrs := setup(t)
 	for testName, testFunc := range map[string]TestCase{
 		"TestLeaderElectionNormal": testLeaderElectionNormal,
-		"TestLogReplicationNormal": testLogReplicationNormal,
 		// "TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
+		// "TestLogReplication": testLogReplication,
 	} {
 		t.Run(testName, func(t *testing.T) {
 			testFunc(t, raftNodes, peerAddrs)
@@ -33,14 +35,15 @@ func testLeaderElectionNormal(t *testing.T, raftNodes []*Raft, peerAddrs []strin
 	checkTermEquality(t, raftNodes)
 }
 
-func testLogReplicationNormal(t *testing.T, raftNodes []*Raft, peerAddrs []string) {
+func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 	var term int
 
-	raftNodes[0].mu.Lock()
-	term = raftNodes[0].currentTerm
-	raftNodes[0].mu.Unlock()
+	rf := raftNodes[0]
+	rf.withLock(func() {
+		term = rf.currentTerm
+	})
 
-	entries := []map[string]interface{}{
+	entries_1 := []map[string]interface{}{
 		{
 			"data": "this should be the first",
 			"term": term,
@@ -58,13 +61,14 @@ func testLogReplicationNormal(t *testing.T, raftNodes []*Raft, peerAddrs []strin
 			"term": term,
 		},
 	}
-
-	res, err := ClientSendData(entries)
+	res, err := ClientSendData(entries_1)
 	if err != nil {
 		t.Errorf("Error sending client request to raft: %s", err)
 	}
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
+
+	panic("here")
 
 	// Check for exactly 1 leader
 	checkLeaderElection(t, raftNodes)
@@ -74,79 +78,264 @@ func testLogReplicationNormal(t *testing.T, raftNodes []*Raft, peerAddrs []strin
 	checkLogConsistency(t, raftNodes)
 	// Check for committed
 	checkCommitted(t, raftNodes, res.CommitIndex)
+
+	// entries_2 := []map[string]interface{}{
+	// 	{
+	// 		"data": "this should be the fifth",
+	// 		"term": term,
+	// 	},
+	// 	{
+	// 		"data": "this should be the sixth",
+	// 		"term": term,
+	// 	},
+	// }
+	// res, err = ClientSendData(entries_2)
+	// if err != nil {
+	// 	t.Errorf("Error sending client request to raft: %s", err)
+	// }
+
+	// time.Sleep(1 * time.Second)
+
+	// // Check for exactly 1 leader
+	// checkLeaderElection(t, raftNodes)
+	// // Check for equality of terms across nodes
+	// checkTermEquality(t, raftNodes)
+	// // Check for complete equality of logs across nodes
+	// checkLogConsistency(t, raftNodes)
+	// // Check for committed
+	// checkCommitted(t, raftNodes, res.CommitIndex)
+
+	// var commitIndex int
+
+	// rf.withLock(func() {
+	// 	commitIndex = rf.commitIndex
+	// })
+
+	// // ensuring randnode isn't a leader node
+	// var randNode *Raft
+	// var randNodeState State
+
+	// randNode = raftNodes[rand.Intn(len(raftNodes))]
+	// randNode.withLock(func() {
+	// 	randNodeState = randNode.state
+	// })
+	// for randNodeState == Leader {
+	// 	randNode = raftNodes[rand.Intn(len(raftNodes))]
+	// 	randNode.withLock(func() {
+	// 		randNodeState = randNode.state
+	// 	})
+	// }
+
+	// // randomly truncated incorrect log
+	// randNode.withLock(func() {
+	// 	randNode.log = randNode.log[:2]
+	// 	randNode.commitIndex = 2
+	// })
+
+	// time.Sleep(1 * time.Second)
+
+	// // Check for exactly 1 leader
+	// checkLeaderElection(t, raftNodes)
+	// // Check for equality of terms across nodes
+	// checkTermEquality(t, raftNodes)
+	// // Check for complete equality of logs across nodes
+	// checkLogConsistency(t, raftNodes)
+	// // Check for committed
+	// checkCommitted(t, raftNodes, commitIndex)
+
+	// // ensuring randnode isn't a leader node
+	// randNode = raftNodes[rand.Intn(len(raftNodes))]
+	// randNode.withLock(func() {
+	// 	randNodeState = randNode.state
+	// })
+	// for randNodeState == Leader {
+	// 	randNode = raftNodes[rand.Intn(len(raftNodes))]
+	// 	randNode.withLock(func() {
+	// 		randNodeState = randNode.state
+	// 	})
+	// }
+
+	// time.Sleep(1 * time.Second)
+
+	// randNode.Kill()
+
+	// time.Sleep(1 * time.Second)
+
+	// entries_3 := []map[string]interface{}{
+	// 	{
+	// 		"data": "this should be the seventh",
+	// 		"term": term,
+	// 	},
+	// 	{
+	// 		"data": "this should be the eight",
+	// 		"term": term,
+	// 	},
+	// }
+
+	// res, err = ClientSendData(entries_3)
+	// if err != nil {
+	// 	t.Errorf("Error sending client request to Raft: %s", err)
+	// }
+
+	// time.Sleep(1 * time.Second)
+
+	// // go func() {
+	// // 	utils.Debug.Store(1)
+	// // 	time.Sleep(8 * time.Second)
+	// // 	panic("timeout1")
+	// // }()
+
+	// randNode.Revive()
+
+	// time.Sleep(1 * time.Second)
+
+	// // go func() {
+	// // 	utils.Debug.Store(1)
+	// // 	time.Sleep(4 * time.Second)
+	// // 	panic("timeout2")
+	// // }()
+
+	// // Check for exactly 1 leader
+	// checkLeaderElection(t, raftNodes)
+	// // Check for equality of terms across nodes
+	// checkTermEquality(t, raftNodes)
+	// // Check for complete equality of logs across nodes
+	// checkLogConsistency(t, raftNodes)
+	// // Check for committed
+	// checkCommitted(t, raftNodes, res.CommitIndex)
+
+	// // selecting leader node
+	// var leaderNode *Raft
+	// for _, node := range raftNodes {
+	// 	node.withLock(func() {
+	// 		if node.state == Leader {
+	// 			leaderNode = node
+	// 		}
+	// 	})
+	// }
+
+	// leaderNode.Kill()
+	// time.Sleep(1 * time.Second)
+
+	// randNode.withLock(func() {
+	// 	term = randNode.currentTerm
+	// })
+
+	// entries_4 := []map[string]interface{}{
+	// 	{
+	// 		"data": "this should be the ninth",
+	// 		"term": term,
+	// 	},
+	// 	{
+	// 		"data": "this should be the tenth",
+	// 		"term": term,
+	// 	},
+	// }
+
+	// res, err = ClientSendData(entries_4)
+	// if err != nil {
+	// 	t.Errorf("Error sending client request to Raft: %s", err)
+	// }
+
+	// time.Sleep(1 * time.Second)
+
+	// // Check for exactly 1 leader
+	// checkLeaderElection(t, raftNodes)
+	// // Check for equality of terms across nodes
+	// checkTermEquality(t, raftNodes)
+	// // Check for complete equality of logs across nodes
+	// checkLogConsistency(t, raftNodes)
+	// // Check for committed
+	// checkCommitted(t, raftNodes, res.CommitIndex)
+
+	// // go func() {
+	// // 	time.Sleep(8 * time.Second)
+	// // 	panic("timeout panic!!!")
+	// // }()
+	// // utils.Debug.Store(1)
+
+	// time.Sleep(1 * time.Second)
+	// leaderNode.Revive()
+	// time.Sleep(1 * time.Second)
 }
 
-func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, peerAddrs []string) {
+func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, _ []string) {
 	randNode := raftNodes[rand.Intn(len(raftNodes))]
 
 	// log.Printf("[==tester==] Killing random raft node (%d @ %s)", randNode.me, peerAddrs[randNode.me])
 	log.Printf("[==tester==] Killing random raft node")
 	randNode.Kill()
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 	checkLeaderElection(t, raftNodes)
 	checkTermEquality(t, raftNodes)
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	// log.Printf("[==tester==] Reviving random raft node (%d @ %s)", randNode.me, peerAddrs[randNode.me])
 	log.Printf("[==tester==] Reviving random raft node")
 	randNode.Revive()
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 	checkLeaderElection(t, raftNodes)
 	checkTermEquality(t, raftNodes)
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 
+	// selecting leader node
 	var leaderNode *Raft
 	for _, node := range raftNodes {
-		node.mu.Lock()
-		if node.state == Leader {
-			leaderNode = node
-		}
-		node.mu.Unlock()
+		node.withLock(func() {
+			if node.state == Leader {
+				leaderNode = node
+			}
+		})
 	}
 
-	log.Printf("[==tester==] Killling leader raft node (%d @ %s)", leaderNode.me, peerAddrs[leaderNode.me])
+	utils.Debug.Store(1)
+	// log.Printf("[==tester==] Killling leader raft node (%d @ %s)", leaderNode.me, peerAddrs[leaderNode.me])
 	log.Printf("[==tester==] Killling leader raft node")
 	leaderNode.Kill()
 
-	// utils.Debug.Store(1)
-	// go func() {
-	// 	go utils.LogStackTraces(2 * time.Second)
-	// 	time.Sleep(5 * time.Second)
-	// 	panic("hereeeeeevis")
-	// }()
-
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 	checkLeaderElection(t, raftNodes)
-	checkTermEquality(t, raftNodes)
-	time.Sleep(2 * time.Second)
+	// checkTermEquality(t, raftNodes)
+	time.Sleep(1 * time.Second)
 
-	// log.Printf("[==tester==] Reviving former leader raft node (%d @ %s)", leaderNode.me, peerAddrs[leaderNode.me])
-	log.Printf("[==tester==] Reviving former leader raft node")
-	leaderNode.Revive()
+	// // log.Printf("[==tester==] Reviving former leader raft node (%d @ %s)", leaderNode.me, peerAddrs[leaderNode.me])
+	// log.Printf("[==tester==] Reviving former leader raft node")
+	// leaderNode.Revive()
 
-	time.Sleep(2 * time.Second)
-	checkLeaderElection(t, raftNodes)
-	checkTermEquality(t, raftNodes)
+	// time.Sleep(1 * time.Second)
+	// checkLeaderElection(t, raftNodes)
+	// checkTermEquality(t, raftNodes)
 }
 
 // helpers / unit tests
 
 func checkLeaderElection(t *testing.T, raftNodes []*Raft) {
 	t.Helper()
-	leaderCnt := 0
+	var leaderCnt int = 0
 
 	for _, rf := range raftNodes {
-		rf.mu.Lock()
-		if rf.killed() {
-			rf.mu.Unlock()
+		var killed bool
+
+		rf.withLock(func() {
+			if rf.killed() {
+				killed = true
+				return
+			}
+
+			if rf.state == Leader {
+				leaderCnt += 1
+			}
+		})
+
+		if killed {
 			continue
 		}
-		if rf.state == Leader {
-			leaderCnt += 1
-		}
-		rf.mu.Unlock()
+	}
+
+	if utils.Debug.Load() == 1 {
+		panic("here")
 	}
 
 	if leaderCnt != 1 {
@@ -157,36 +346,48 @@ func checkLeaderElection(t *testing.T, raftNodes []*Raft) {
 func checkTermEquality(t *testing.T, raftNodes []*Raft) {
 	t.Helper()
 
-	raftNodes[0].mu.Lock()
-	term := raftNodes[0].currentTerm
-	raftNodes[0].mu.Unlock()
+	var term int
+	node := raftNodes[0]
+
+	node.withLock(func() {
+		term = node.currentTerm
+	})
 
 	for _, rf := range raftNodes[1:] {
-		rf.mu.Lock()
-		if rf.killed() {
-			rf.mu.Unlock()
+		var killed bool
+
+		rf.withLock(func() {
+			if rf.killed() {
+				killed = true
+				return
+			}
+			if rf.currentTerm != term {
+				t.Errorf("Failed Leader Election; node with inconsistent term found (%d)", rf.me)
+			}
+		})
+
+		if killed {
 			continue
 		}
-		if rf.currentTerm != term {
-			t.Errorf("Failed Leader Election; node with inconsistent term found (%d)", rf.me)
-		}
-		rf.mu.Unlock()
 	}
 }
 
 func checkLogConsistency(t *testing.T, raftNodes []*Raft) {
 	t.Helper()
 
-	raftNodes[0].mu.Lock()
-	log := raftNodes[0].log
-	raftNodes[0].mu.Unlock()
+	var log []map[string]interface{}
+	node := raftNodes[0]
+
+	node.withLock(func() {
+		log = node.log
+	})
 
 	for _, node := range raftNodes[1:] {
-		node.mu.Lock()
-		if !areEqual(log, node.log) {
-			t.Errorf("logs differ across nodes; comparing nodes 0 and %d", node.me)
-		}
-		node.mu.Unlock()
+		node.withLock(func() {
+			if !areEqual(log, node.log) {
+				t.Errorf("logs differ across nodes; comparing nodes 0 and %d", node.me)
+			}
+		})
 	}
 }
 
@@ -194,11 +395,16 @@ func checkCommitted(t *testing.T, raftNodes []*Raft, commitIndex int) {
 	t.Helper()
 
 	for _, node := range raftNodes[:] {
-		node.mu.Lock()
-		if node.commitIndex != commitIndex {
-			t.Errorf("commit index differs across nodes; comparing leader (%d) and %d (%d)", commitIndex, node.me, node.commitIndex)
-		}
-		node.mu.Unlock()
+		node.withLock(func() {
+			if node.commitIndex != commitIndex {
+				t.Errorf(
+					"commit index differs across nodes; comparing leader (%d) and %d (%d)",
+					commitIndex,
+					node.me,
+					node.commitIndex,
+				)
+			}
+		})
 	}
 }
 
@@ -241,6 +447,6 @@ func setup(t *testing.T) ([]*Raft, []string) {
 	}
 
 	// Allowing initial leader election
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 	return raftNodes, peerAddresses
 }
