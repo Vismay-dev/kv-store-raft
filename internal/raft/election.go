@@ -16,13 +16,13 @@ func (rf *Raft) electionTimeout() {
 
 	for {
 		if rf.killed() {
-			rf.withLock(func() {
-				utils.Dprintf(
-					"[%d @ %s] node is dead...\n",
-					rf.me,
-					rf.peers[rf.me],
-				)
-			})
+			// rf.withLock(func() {
+			// 	utils.Dprintf(
+			// 		"[%d @ %s] node is dead...\n",
+			// 		rf.me,
+			// 		rf.peers[rf.me],
+			// 	)
+			// })
 			continue
 		}
 		select {

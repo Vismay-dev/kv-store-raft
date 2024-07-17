@@ -101,7 +101,7 @@ func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) {
 							"[%d @ %s] log coherence issue detected for follower @ %s\n",
 							rf.me,
 							rf.peers[rf.me],
-							peer,
+							peerAddr,
 						)
 						rpcArgs.Entries = rf.log[rf.nextIndex[idx]-1:]
 						rpcArgs.PrevLogIndex = rf.nextIndex[idx] - 1
@@ -110,7 +110,6 @@ func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) {
 				})
 
 				if rf.sendAppendEntry(peer, &rpcArgs, &reply) {
-
 					rf.withLock(func() {
 						if reply.Term > rf.currentTerm && !reply.Success {
 							rf.state = Follower
@@ -127,7 +126,6 @@ func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) {
 							rf.nextIndex[idx] = len(rf.log) + 1
 						}
 					})
-
 				} else {
 					rf.withLock(func() {
 						utils.Dprintf(
@@ -177,24 +175,24 @@ func (rf *Raft) SendData(
 	})
 
 	if rfState != Leader {
-		var err error
+		var peer string
+		var rpcname string
 
 		rf.withLock(func() {
-			var peer string
 			for i, rfPeer := range rf.peers {
 				if i == rf.leaderId {
 					peer = rfPeer
 				}
 			}
-			rpcname := fmt.Sprintf("Raft-%d.SendData", rf.leaderId)
-			if !rf.call(peer, rpcname, ClientReqReq, ClientReqRes) {
-				err = fmt.Errorf("error forward request to leader node")
-				return
-			}
-			err = nil
+			rpcname = fmt.Sprintf("Raft-%d.SendData", rf.leaderId)
 		})
 
-		return err
+		if !rf.call(peer, rpcname, ClientReqReq, ClientReqRes) {
+			err := fmt.Errorf("error forward request to leader node")
+			return err
+		}
+
+		return nil
 	}
 
 	var me int
