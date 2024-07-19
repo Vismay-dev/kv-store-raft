@@ -60,12 +60,6 @@ func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, _ []str
 	checkLeaderElection(t, raftNodes)
 	checkTermEquality(t, raftNodes)
 
-	go func() {
-		utils.Debug.Store(1)
-		time.Sleep(4 * time.Second)
-		panic("timeout")
-	}()
-
 	log.Printf("[==tester==] Reviving random raft node (%d)", idx)
 	randNode.Revive()
 
@@ -76,23 +70,23 @@ func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, _ []str
 	time.Sleep(1 * time.Second)
 
 	// selecting leader node
-	// var leaderNode *Raft
-	// for _, node := range raftNodes {
-	// 	node.withLock("", func(){
-	// 		if node.state == Leader {
-	// 			leaderNode = node
-	// 		}
-	// 	})
-	// }
+	var leaderNode *Raft
+	for _, node := range raftNodes {
+		node.withLock("", func() {
+			if node.state == Leader {
+				leaderNode = node
+			}
+		})
+	}
 
-	// utils.Debug.Store(1)
-	// log.Printf("[==tester==] Killling leader raft node")
-	// leaderNode.Kill()
+	utils.Debug.Store(1)
+	log.Printf("[==tester==] Killling leader raft node")
+	leaderNode.Kill()
 
-	// time.Sleep(1 * time.Second)
-	// checkLeaderElection(t, raftNodes)
-	// checkTermEquality(t, raftNodes)
-	// time.Sleep(1 * time.Second)
+	time.Sleep(1 * time.Second)
+	checkLeaderElection(t, raftNodes)
+	checkTermEquality(t, raftNodes)
+	time.Sleep(1 * time.Second)
 
 	// log.Printf("[==tester==] Reviving former leader raft node")
 	// leaderNode.Revive()
@@ -363,10 +357,8 @@ func checkLeaderElection(t *testing.T, raftNodes []*Raft) {
 	t.Helper()
 	var leaderCnt int = 0
 
-	for i, rf := range raftNodes {
+	for _, rf := range raftNodes {
 		var killed bool
-
-		log.Print("oogabooga:", i)
 
 		rf.withLock("", func() {
 			if rf.killed() {
@@ -378,8 +370,6 @@ func checkLeaderElection(t *testing.T, raftNodes []*Raft) {
 				leaderCnt += 1
 			}
 		})
-
-		log.Print("oogabooga done:", i)
 
 		if killed {
 			continue
