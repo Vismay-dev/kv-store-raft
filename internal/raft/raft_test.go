@@ -16,7 +16,7 @@ type TestCase func(t *testing.T, raftNodes []*Raft, peerAddresses []string)
 func TestRaft(t *testing.T) {
 	raftNodes, peerAddrs := setup(t)
 	for testName, testFunc := range map[string]TestCase{
-		// "TestLeaderElectionNormal": testLeaderElectionNormal,
+		"TestLeaderElectionNormal":           testLeaderElectionNormal,
 		"TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
 		// "TestLogReplication": testLogReplication,
 	} {
@@ -60,14 +60,18 @@ func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, _ []str
 	checkLeaderElection(t, raftNodes)
 	checkTermEquality(t, raftNodes)
 
+	// go func() {
+	// 	utils.Debug.Store(1)
+	// 	time.Sleep(3*time.Second)
+	// 	panic("timeout")
+	// }()
+
 	log.Printf("[==tester==] Reviving random raft node (%d)", idx)
 	randNode.Revive()
 
-	time.Sleep(1 * time.Second)
-
+	time.Sleep(2 * time.Second)
 	checkLeaderElection(t, raftNodes)
 	checkTermEquality(t, raftNodes)
-	time.Sleep(1 * time.Second)
 
 	// selecting leader node
 	var leaderNode *Raft
@@ -79,27 +83,25 @@ func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, _ []str
 		})
 	}
 
-	utils.Debug.Store(1)
 	log.Printf("[==tester==] Killling leader raft node")
 	leaderNode.Kill()
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 	checkLeaderElection(t, raftNodes)
 	checkTermEquality(t, raftNodes)
-	time.Sleep(1 * time.Second)
 
-	// log.Printf("[==tester==] Reviving former leader raft node")
-	// leaderNode.Revive()
+	log.Printf("[==tester==] Reviving former leader raft node")
+	leaderNode.Revive()
 
-	// time.Sleep(2 * time.Second)
-	// checkLeaderElection(t, raftNodes)
-	// checkTermEquality(t, raftNodes)
+	time.Sleep(2 * time.Second)
+	checkLeaderElection(t, raftNodes)
+	checkTermEquality(t, raftNodes)
 }
 
 func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 	var term int
 
-	rf := raftNodes[2]
+	rf := raftNodes[0]
 	rf.withLock("", func() {
 		term = rf.currentTerm
 	})
@@ -123,6 +125,12 @@ func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 		},
 	}
 
+	go func() {
+		utils.Debug.Store(1)
+		time.Sleep(4 * time.Second)
+		panic("timeout")
+	}()
+
 	res, err := ClientSendData(entries_1)
 	if err != nil {
 		t.Errorf("Error sending client request to raft: %s", err)
@@ -138,70 +146,70 @@ func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 	// Check for committed
 	checkCommitted(t, raftNodes, res.CommitIndex)
 
-	entries_2 := []map[string]interface{}{
-		{
-			"data": "this should be the fifth",
-			"term": term,
-		},
-		{
-			"data": "this should be the sixth",
-			"term": term,
-		},
-	}
+	// entries_2 := []map[string]interface{}{
+	// 	{
+	// 		"data": "this should be the fifth",
+	// 		"term": term,
+	// 	},
+	// 	{
+	// 		"data": "this should be the sixth",
+	// 		"term": term,
+	// 	},
+	// }
 
-	res, err = ClientSendData(entries_2)
-	if err != nil {
-		t.Errorf("Error sending client request to raft: %s", err)
-	}
-	time.Sleep(2 * time.Second)
+	// res, err = ClientSendData(entries_2)
+	// if err != nil {
+	// 	t.Errorf("Error sending client request to raft: %s", err)
+	// }
+	// time.Sleep(2 * time.Second)
 
-	// Check for exactly 1 leader
-	checkLeaderElection(t, raftNodes)
-	// Check for equality of terms across nodes
-	checkTermEquality(t, raftNodes)
-	// Check for complete equality of logs across nodes
-	checkLogConsistency(t, raftNodes)
-	// Check for committed
-	checkCommitted(t, raftNodes, res.CommitIndex)
+	// // Check for exactly 1 leader
+	// checkLeaderElection(t, raftNodes)
+	// // Check for equality of terms across nodes
+	// checkTermEquality(t, raftNodes)
+	// // Check for complete equality of logs across nodes
+	// checkLogConsistency(t, raftNodes)
+	// // Check for committed
+	// checkCommitted(t, raftNodes, res.CommitIndex)
 
-	var commitIndex int
+	// var commitIndex int
 
-	rf.withLock("", func() {
-		commitIndex = rf.commitIndex
-	})
+	// rf.withLock("", func() {
+	// 	commitIndex = rf.commitIndex
+	// })
 
-	// ensuring randnode isn't a leader node
-	var randNode *Raft
-	var randNodeState State
+	// // ensuring randnode isn't a leader node
+	// var randNode *Raft
+	// var randNodeState State
 
-	randNode = raftNodes[rand.Intn(len(raftNodes))]
-	randNode.withLock("", func() {
-		randNodeState = randNode.state
-	})
-	for randNodeState == Leader {
-		randNode = raftNodes[rand.Intn(len(raftNodes))]
-		randNode.withLock("", func() {
-			randNodeState = randNode.state
-		})
-	}
+	// randNode = raftNodes[rand.Intn(len(raftNodes))]
+	// randNode.withLock("", func() {
+	// 	randNodeState = randNode.state
+	// })
+	// for randNodeState == Leader {
+	// 	randNode = raftNodes[rand.Intn(len(raftNodes))]
+	// 	randNode.withLock("", func() {
+	// 		randNodeState = randNode.state
+	// 	})
+	// }
 
-	// randomly truncated incorrect log
-	randNode.withLock("", func() {
-		randNode.log = randNode.log[:2]
-		randNode.commitIndex = 2
-	})
-	time.Sleep(2 * time.Second)
+	// // randomly truncated incorrect log
+	// randNode.withLock("", func() {
+	// 	randNode.log = randNode.log[:2]
+	// 	randNode.commitIndex = 2
+	// })
+	// time.Sleep(2 * time.Second)
 
-	panic("here")
+	// panic("here")
 
-	// Check for exactly 1 leader
-	checkLeaderElection(t, raftNodes)
-	// Check for equality of terms across nodes
-	checkTermEquality(t, raftNodes)
-	// Check for complete equality of logs across nodes
-	checkLogConsistency(t, raftNodes)
-	// Check for committed
-	checkCommitted(t, raftNodes, commitIndex)
+	// // Check for exactly 1 leader
+	// checkLeaderElection(t, raftNodes)
+	// // Check for equality of terms across nodes
+	// checkTermEquality(t, raftNodes)
+	// // Check for complete equality of logs across nodes
+	// checkLogConsistency(t, raftNodes)
+	// // Check for committed
+	// checkCommitted(t, raftNodes, commitIndex)
 
 	////
 	////
@@ -385,7 +393,13 @@ func checkTermEquality(t *testing.T, raftNodes []*Raft) {
 	t.Helper()
 
 	var term int
-	node := raftNodes[0]
+	var idx int = 0
+	node := raftNodes[idx]
+
+	for node.killed() {
+		idx += 1
+		node = raftNodes[idx]
+	}
 
 	node.withLock("", func() {
 		term = node.currentTerm

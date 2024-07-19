@@ -31,6 +31,7 @@ type AppendEntriesRequest struct {
 type AppendEntriesResponse struct {
 	Term    int
 	Success bool
+	Reason  string
 }
 
 type ClientReqRequest struct {

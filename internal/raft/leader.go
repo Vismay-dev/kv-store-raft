@@ -117,7 +117,7 @@ func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) {
 								rf.me,
 								rf.peers[rf.me],
 							)
-						} else if reply.Term <= rf.currentTerm && !reply.Success {
+						} else if reply.Term <= rf.currentTerm && !reply.Success && reply.Reason == "LogInconsistency" {
 							log.Printf("Reducing node's next index %s", peerAddr)
 							rf.nextIndex[idx] -= 1
 						} else if reply.Success {

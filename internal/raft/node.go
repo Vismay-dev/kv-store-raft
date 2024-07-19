@@ -82,6 +82,9 @@ func (rf *Raft) Kill() {
 
 func (rf *Raft) Revive() {
 	if rf.killed() {
+		rf.withLock("", func() {
+			rf.timerChElection <- struct{}{}
+		})
 		atomic.StoreInt32(&rf.dead, 0)
 	}
 }

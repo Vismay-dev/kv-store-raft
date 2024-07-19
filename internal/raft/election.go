@@ -15,17 +15,17 @@ func (rf *Raft) electionTimeout() {
 	timeout := time.Duration(350+rand.Intn(250)) * time.Millisecond
 
 	for {
-		if rf.killed() {
-			// rf.withLock("", func(){
-			// 	utils.Dprintf(
-			// 		"[%d @ %s] this node has been killed\n",
-			// 		rf.me,
-			// 		rf.peers[rf.me],
-			// 	)
-			// })
-			time.Sleep(10 * time.Millisecond)
-			continue
-		}
+		// if rf.killed() {
+		// 	// rf.withLock("", func(){
+		// 	// 	utils.Dprintf(
+		// 	// 		"[%d @ %s] this node has been killed\n",
+		// 	// 		rf.me,
+		// 	// 		rf.peers[rf.me],
+		// 	// 	)
+		// 	// })
+		// 	time.Sleep(10 * time.Millisecond)
+		// 	continue
+		// }
 		select {
 		case <-rf.timerChElection:
 			var isNotLeader bool = false

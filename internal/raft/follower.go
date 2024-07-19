@@ -2,6 +2,7 @@ package raft
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/vismaysur/kv-store-raft/internal/raft/utils"
 )
@@ -11,10 +12,6 @@ func (rf *Raft) HandleAppendEntry(
 	AppendEntryRes *AppendEntriesResponse,
 ) error {
 	if rf.killed() {
-		AppendEntryRes.Success = false
-		rf.withLock("", func() {
-			AppendEntryRes.Term = rf.currentTerm
-		})
 		return fmt.Errorf("node is dead")
 	}
 
@@ -22,7 +19,7 @@ func (rf *Raft) HandleAppendEntry(
 
 	rf.withLock("", func() {
 		utils.Dprintf(
-			"[%d @ %x] received append entry from leader: %d\n",
+			"[%d @ %s] received append entry from leader: %d\n",
 			rf.me,
 			rf.peers[rf.me],
 			rf.leaderId,
@@ -38,6 +35,7 @@ func (rf *Raft) HandleAppendEntry(
 			rf.currentTerm = AppendEntryReq.Term
 			rf.state = Follower
 			rf.votedFor = -1
+			go rf.electionTimeout()
 		}
 
 		if rf.currentTerm > AppendEntryReq.Term {
@@ -55,6 +53,12 @@ func (rf *Raft) HandleAppendEntry(
 
 		if (AppendEntryReq.PrevLogIndex > 0 && len(rf.log) < AppendEntryReq.PrevLogIndex) ||
 			(AppendEntryReq.PrevLogIndex > 0 && rf.log[AppendEntryReq.PrevLogIndex-1]["term"].(int) != AppendEntryReq.PrevLogTerm) {
+			log.Printf(
+				"[%d @ %s] rejecting AppendEntry RPC from leader - x - %d\n",
+				rf.me,
+				rf.peers[rf.me],
+				AppendEntryReq.LeaderId,
+			)
 			utils.Dprintf(
 				"[%d @ %s] rejecting AppendEntry RPC from leader - x - %d\n",
 				rf.me,
@@ -63,6 +67,7 @@ func (rf *Raft) HandleAppendEntry(
 			)
 			AppendEntryRes.Term = rf.currentTerm
 			AppendEntryRes.Success = false
+			AppendEntryRes.Reason = "LogInconsistency"
 			err = nil
 			return
 		}
@@ -85,6 +90,7 @@ func (rf *Raft) HandleAppendEntry(
 		}
 
 		rf.timerChElection <- struct{}{}
+
 		rf.state = Follower
 		rf.currentTerm = AppendEntryReq.Term
 		rf.leaderId = AppendEntryReq.LeaderId
@@ -92,13 +98,6 @@ func (rf *Raft) HandleAppendEntry(
 
 		AppendEntryRes.Term = rf.currentTerm
 		AppendEntryRes.Success = true
-
-		utils.Dprintf(
-			"[%d @ %s] AppendEntry RPC from leader successful: %d\n",
-			rf.me,
-			rf.peers[rf.me],
-			AppendEntryReq.LeaderId,
-		)
 
 		err = nil
 	})
