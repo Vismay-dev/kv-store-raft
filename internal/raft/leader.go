@@ -2,7 +2,7 @@ package raft
 
 import (
 	"fmt"
-	"sync"
+	"log"
 	"sync/atomic"
 	"time"
 
@@ -23,9 +23,8 @@ func (rf *Raft) sendHeartbeats() {
 			var args *AppendEntriesRequest
 			var killed bool = false
 
-			rf.withLock(func() {
+			rf.withLock("", func() {
 				if rf.state != Leader {
-					go rf.electionTimeout()
 					isNotLeader = true
 					return
 				}
@@ -59,6 +58,7 @@ func (rf *Raft) sendHeartbeats() {
 			})
 
 			if isNotLeader {
+				go rf.electionTimeout()
 				return
 			}
 
@@ -80,22 +80,18 @@ func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) {
 	var peerAddrs []string
 	var me int
 
-	rf.withLock(func() {
+	rf.withLock("", func() {
 		peerAddrs = make([]string, len(rf.peers))
 		copy(peerAddrs, rf.peers)
 		me = rf.me
 	})
 
-	var wg sync.WaitGroup
-
 	for i, peer := range peerAddrs {
 		if peer != peerAddrs[me] {
-			wg.Add(1)
 			go func(peerAddr string, idx int, rpcArgs AppendEntriesRequest) {
-				defer wg.Done()
 				var reply AppendEntriesResponse
 
-				rf.withLock(func() {
+				rf.withLock("", func() {
 					if rf.nextIndex[idx] <= len(rf.log) {
 						utils.Dprintf(
 							"[%d @ %s] log coherence issue detected for follower @ %s\n",
@@ -105,12 +101,14 @@ func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) {
 						)
 						rpcArgs.Entries = rf.log[rf.nextIndex[idx]-1:]
 						rpcArgs.PrevLogIndex = rf.nextIndex[idx] - 1
-						rpcArgs.PrevLogTerm = rf.log[rpcArgs.PrevLogIndex]["term"].(int)
+						if rpcArgs.PrevLogIndex > 0 {
+							rpcArgs.PrevLogTerm = rf.log[rpcArgs.PrevLogIndex-1]["term"].(int)
+						}
 					}
 				})
 
 				if rf.sendAppendEntry(peer, &rpcArgs, &reply) {
-					rf.withLock(func() {
+					rf.withLock("sendAppendEntry", func() {
 						if reply.Term > rf.currentTerm && !reply.Success {
 							rf.state = Follower
 							rf.votedFor = -1
@@ -120,6 +118,7 @@ func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) {
 								rf.peers[rf.me],
 							)
 						} else if reply.Term <= rf.currentTerm && !reply.Success {
+							log.Printf("Reducing node's next index %s", peerAddr)
 							rf.nextIndex[idx] -= 1
 						} else if reply.Success {
 							rf.matchIndex[idx] = len(rf.log)
@@ -127,14 +126,12 @@ func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) {
 						}
 					})
 				} else {
-					rf.withLock(func() {
-						utils.Dprintf(
-							"[%d @ %s] trying to send a heartbeat here to %s\n",
-							rf.me,
-							rf.peers[rf.me],
-							peerAddr,
-						)
-					})
+					utils.Dprintf(
+						"[%d @ %s] failed to send a heartbeat here to %s\n",
+						me,
+						peerAddrs[me],
+						peerAddr,
+					)
 				}
 			}(peer, i, *args)
 		}
@@ -149,7 +146,7 @@ func (rf *Raft) sendAppendEntry(
 ) bool {
 	var peerId int
 
-	rf.withLock(func() {
+	rf.withLock("", func() {
 		for i, rfPeer := range rf.peers {
 			if rfPeer == peer {
 				peerId = i
@@ -170,7 +167,7 @@ func (rf *Raft) SendData(
 	}
 
 	var rfState State
-	rf.withLock(func() {
+	rf.withLock("", func() {
 		rfState = rf.state
 	})
 
@@ -178,7 +175,7 @@ func (rf *Raft) SendData(
 		var peer string
 		var rpcname string
 
-		rf.withLock(func() {
+		rf.withLock("", func() {
 			for i, rfPeer := range rf.peers {
 				if i == rf.leaderId {
 					peer = rfPeer
@@ -202,7 +199,7 @@ func (rf *Raft) SendData(
 	var prevLogIndex int
 	var commitIndex int
 
-	rf.withLock(func() {
+	rf.withLock("", func() {
 		rf.timerChHb <- struct{}{}
 
 		peerAddrs = make([]string, len(rf.peers))
@@ -228,7 +225,7 @@ func (rf *Raft) SendData(
 			go func(peer string, prevLogIndex int, prevLogTerm int, idx int, commitIndex int) {
 				var args *AppendEntriesRequest
 
-				rf.withLock(func() {
+				rf.withLock("", func() {
 					args = &AppendEntriesRequest{
 						Term:         rf.currentTerm,
 						LeaderId:     rf.me,
@@ -243,7 +240,7 @@ func (rf *Raft) SendData(
 				ok := rf.sendAppendEntry(peer, args, &reply)
 
 				for !ok && reply.Term == currentTerm {
-					rf.withLock(func() {
+					rf.withLock("", func() {
 						args.PrevLogIndex = prevLogIndex - 1
 						args.PrevLogTerm = rf.log[prevLogIndex-2]["term"].(int)
 						args.Entries = rf.log[prevLogIndex-1:]
@@ -254,7 +251,7 @@ func (rf *Raft) SendData(
 
 				atomic.AddInt32(&replicationCount, 1)
 
-				rf.withLock(func() {
+				rf.withLock("", func() {
 					rf.matchIndex[idx] = len(rf.log)
 					rf.nextIndex[idx] = len(rf.log) + 1
 				})
@@ -265,7 +262,7 @@ func (rf *Raft) SendData(
 	for atomic.LoadInt32(&replicationCount) < int32(len(peerAddrs)/2) {
 	}
 
-	rf.withLock(func() {
+	rf.withLock("", func() {
 		rf.timerChHb <- struct{}{}
 		rf.matchIndex[rf.me] = len(rf.log)
 		rf.nextIndex[rf.me] = len(rf.log) + 1

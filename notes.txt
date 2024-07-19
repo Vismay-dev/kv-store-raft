@@ -15,17 +15,17 @@ AppendEntries RPC:
 - when a majority have replicated entry, append commitIndex and apply to state [x]
 - include this commitIndex in future AppendEntries RPCs (including heartbeats) so the other servers find out 
 these otherservers can apply it to their state and set it as their commitindex [x]
-- include the last index and term before new entries, if follower can't find the last i & t in their log, they should reject the request
+- include the last index and term before new entries, if follower can't find the last i & t in their log, they should reject the request [x]
 - if rejection is caused by i & t not existing:
 ???
 - but if i & t exists but rejection is because nextIndex conflict with an existing entry:
 decrement nextIndex, now after this leader should try again at the nextIndex and see if the nextIndex and log match,
-if they don't match decrement and repeat, if they match delete all entries that follow and add all entries of the leader from nextIndex
-see (OTHER IMPORTANT DETAILS) for more clarity
-- follower: if leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
+if they don't match decrement and repeat, if they match delete all entries that follow and add all entries of the leader from nextIndex [x]
+see (OTHER IMPORTANT DETAILS) for more clarity [x]
+- follower: if leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry) [x]
 
 RequestVote RPC:
-- follower: in the section where we check for if votedFor is null or candidateId, also check if: candidate's log is atleast as upto date as follower's
+- follower: in the section where we check for if votedFor is null or candidateId, also check if: candidate's log is atleast as upto date as follower's [x]
 
 OTHER IMPORTANT DETAILS: (these seem blurry - read Raft paper) (!! what is matchIndex?)
 - wherever commitIndex is being appended, if commitIndex > lastApplied, increment lastApplied and apply it.

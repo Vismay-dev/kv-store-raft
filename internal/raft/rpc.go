@@ -54,7 +54,7 @@ func (rf *Raft) call(peer, rpcname string, req interface{}, res interface{}) boo
 	var id int
 	var address string
 
-	rf.withLock(func() {
+	rf.withLock("", func() {
 		id = rf.me
 		address = rf.peers[rf.me]
 	})

@@ -12,24 +12,25 @@ import (
 
 func (rf *Raft) electionTimeout() {
 	start := time.Now()
-	timeout := time.Duration(350+rand.Intn(150)) * time.Millisecond
+	timeout := time.Duration(350+rand.Intn(250)) * time.Millisecond
 
 	for {
 		if rf.killed() {
-			// rf.withLock(func() {
+			// rf.withLock("", func(){
 			// 	utils.Dprintf(
-			// 		"[%d @ %s] node is dead...\n",
+			// 		"[%d @ %s] this node has been killed\n",
 			// 		rf.me,
 			// 		rf.peers[rf.me],
 			// 	)
 			// })
+			time.Sleep(10 * time.Millisecond)
 			continue
 		}
 		select {
 		case <-rf.timerChElection:
 			var isNotLeader bool = false
 
-			rf.withLock(func() {
+			rf.withLock("", func() {
 				if rf.state != Leader {
 					isNotLeader = true
 				}
@@ -43,7 +44,7 @@ func (rf *Raft) electionTimeout() {
 			now := time.Now()
 			elapsed := now.Sub(start)
 			if elapsed > timeout {
-				rf.withLock(func() {
+				rf.withLock("", func() {
 					if rf.state == Candidate {
 						rf.state = Follower
 						utils.Dprintf(
@@ -72,7 +73,7 @@ func (rf *Raft) startElection() {
 	var args *RequestVoteRequest
 	var me int
 
-	rf.withLock(func() {
+	rf.withLock("", func() {
 		rf.state = Candidate
 		rf.currentTerm += 1
 		rf.votedFor = rf.me
@@ -98,7 +99,7 @@ func (rf *Raft) startElection() {
 			go func(peer string) {
 				var reply RequestVoteResponse
 				if rf.sendRequestVote(peer, args, &reply) {
-					rf.withLock(func() {
+					rf.withLock("", func() {
 						if reply.Term > rf.currentTerm {
 							rf.currentTerm = reply.Term
 							rf.votedFor = -1
@@ -115,9 +116,9 @@ func (rf *Raft) startElection() {
 
 	var isNotCandidate bool = false
 
-	rf.withLock(func() {
+	rf.withLock("", func() {
 		for atomic.LoadInt32(&votes) <= int32(totalPeers/2) {
-			if rf.state != Candidate {
+			if rf.state != Candidate || rf.currentTerm != args.Term {
 				utils.Dprintf(
 					"[%d @ %s] unqualified to become leader; quitting election\n",
 					rf.me,
@@ -136,9 +137,10 @@ func (rf *Raft) startElection() {
 
 	var argsNew *AppendEntriesRequest
 
-	rf.withLock(func() {
+	rf.withLock("", func() {
 		rf.timerChElection <- struct{}{}
 		rf.state = Leader
+		rf.leaderId = rf.me
 
 		var prevLogTerm int
 		if len(rf.log) > 0 {
@@ -161,7 +163,7 @@ func (rf *Raft) startElection() {
 		rf.matchIndex = []int{0, 0, 0, 0, 0}
 	})
 
-	rf.sendAppendEntries(argsNew)
+	go rf.sendAppendEntries(argsNew)
 	go rf.sendHeartbeats()
 }
 
@@ -172,7 +174,7 @@ func (rf *Raft) sendRequestVote(
 	res *RequestVoteResponse,
 ) bool {
 	var peerId int
-	rf.withLock(func() {
+	rf.withLock("", func() {
 		for i, rfPeer := range rf.peers {
 			if rfPeer == peer {
 				peerId = i
@@ -193,7 +195,7 @@ func (rf *Raft) HandleRequestVote(
 
 	var err error
 
-	rf.withLock(func() {
+	rf.withLock("", func() {
 		if rf.currentTerm > RequestVoteReq.Term {
 			RequestVoteRes.Term = rf.currentTerm
 			RequestVoteRes.VoteGranted = false
@@ -207,7 +209,14 @@ func (rf *Raft) HandleRequestVote(
 			rf.state = Follower
 		}
 
-		if rf.votedFor == -1 || rf.votedFor == RequestVoteReq.CandidateId {
+		lastLogIndex := len(rf.log)
+		lastLogTerm := 0
+		if lastLogIndex > 0 {
+			lastLogTerm = rf.log[lastLogIndex-1]["term"].(int)
+		}
+
+		if (rf.votedFor == -1 || rf.votedFor == RequestVoteReq.CandidateId) &&
+			(RequestVoteReq.LastLogIndex > lastLogIndex || (RequestVoteReq.LastLogTerm == lastLogTerm && RequestVoteReq.LastLogIndex >= lastLogIndex)) {
 			rf.votedFor = RequestVoteReq.CandidateId
 			RequestVoteRes.VoteGranted = true
 			utils.Dprintf(

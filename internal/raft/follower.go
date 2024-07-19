@@ -11,12 +11,23 @@ func (rf *Raft) HandleAppendEntry(
 	AppendEntryRes *AppendEntriesResponse,
 ) error {
 	if rf.killed() {
+		AppendEntryRes.Success = false
+		rf.withLock("", func() {
+			AppendEntryRes.Term = rf.currentTerm
+		})
 		return fmt.Errorf("node is dead")
 	}
 
 	var err error
 
-	rf.withLock(func() {
+	rf.withLock("", func() {
+		utils.Dprintf(
+			"[%d @ %x] received append entry from leader: %d\n",
+			rf.me,
+			rf.peers[rf.me],
+			rf.leaderId,
+		)
+
 		if AppendEntryReq.Term > rf.currentTerm {
 			utils.Dprintf(
 				"[%d @ %s] found leader of a newer term; reverting to follower - - - %d\n",
@@ -52,7 +63,6 @@ func (rf *Raft) HandleAppendEntry(
 			)
 			AppendEntryRes.Term = rf.currentTerm
 			AppendEntryRes.Success = false
-
 			err = nil
 			return
 		}
@@ -60,16 +70,11 @@ func (rf *Raft) HandleAppendEntry(
 		if len(AppendEntryReq.Entries) > 0 {
 			if AppendEntryReq.PrevLogIndex == 0 && len(rf.log) > 0 {
 				utils.Dprintf(
-					"[%d @ %s] rejecting AppendEntry RPC from leader - - %d\n",
+					"[%d @ %s] clearing existing log entries\n",
 					rf.me,
 					rf.peers[rf.me],
-					AppendEntryReq.LeaderId,
 				)
-				AppendEntryRes.Term = rf.currentTerm
-				AppendEntryRes.Success = false
-
-				err = nil
-				return
+				rf.log = rf.log[:0]
 			}
 			rf.log = append(rf.log[:AppendEntryReq.PrevLogIndex], AppendEntryReq.Entries...)
 			utils.Dprintf(

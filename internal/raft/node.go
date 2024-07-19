@@ -65,7 +65,7 @@ func Make(peers []string, me int) *Raft {
 
 func (rf *Raft) Start() {
 	var rfState State
-	rf.withLock(func() {
+	rf.withLock("", func() {
 		rfState = rf.state
 	})
 
@@ -93,7 +93,7 @@ func (rf *Raft) killed() bool {
 func (rf *Raft) serve() {
 	var rfId int
 	var peerAddr string
-	rf.withLock(func() {
+	rf.withLock("", func() {
 		rfId = rf.me
 		peerAddr = rf.peers[rf.me]
 	})
@@ -124,8 +124,27 @@ func (rf *Raft) serve() {
 	}()
 }
 
-func (rf *Raft) withLock(f func()) {
+func (rf *Raft) withLock(label string, f func()) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	if label == "sendAppendEntry" {
+		utils.Dprintf(
+			"[%d @ %s] acquiring lock here - isLeader: %v; label: %s\n",
+			rf.me,
+			rf.peers[rf.me],
+			rf.me == rf.leaderId,
+			label,
+		)
+	}
+
 	f()
+	if label == "sendAppendEntry" {
+		utils.Dprintf(
+			"[%d @ %s] releasing lock here - isLeader: %v; label: %s\n",
+			rf.me,
+			rf.peers[rf.me],
+			rf.me == rf.leaderId,
+			label,
+		)
+	}
 }
