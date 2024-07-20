@@ -16,9 +16,9 @@ type TestCase func(t *testing.T, raftNodes []*Raft, peerAddresses []string)
 func TestRaft(t *testing.T) {
 	raftNodes, peerAddrs := setup(t)
 	for testName, testFunc := range map[string]TestCase{
-		"TestLeaderElectionNormal":           testLeaderElectionNormal,
-		"TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
-		// "TestLogReplication": testLogReplication,
+		// "TestLeaderElectionNormal":           testLeaderElectionNormal,
+		// "TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
+		"TestLogReplication": testLogReplication,
 	} {
 		t.Run(testName, func(t *testing.T) {
 			testFunc(t, raftNodes, peerAddrs)
@@ -52,19 +52,18 @@ func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, _ []str
 		})
 	}
 
-	// time.Sleep(300*time.Millisecond)
+	go func() {
+		utils.Debug.Store(1)
+		time.Sleep(15 * time.Second)
+		panic("timeout")
+	}()
+
 	log.Printf("[==tester==] Killing random follower node (%d)", idx)
 	randNode.Kill()
 
 	time.Sleep(2 * time.Second)
 	checkLeaderElection(t, raftNodes)
 	checkTermEquality(t, raftNodes)
-
-	// go func() {
-	// 	utils.Debug.Store(1)
-	// 	time.Sleep(3*time.Second)
-	// 	panic("timeout")
-	// }()
 
 	log.Printf("[==tester==] Reviving random raft node (%d)", idx)
 	randNode.Revive()
@@ -125,12 +124,6 @@ func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 		},
 	}
 
-	go func() {
-		utils.Debug.Store(1)
-		time.Sleep(4 * time.Second)
-		panic("timeout")
-	}()
-
 	res, err := ClientSendData(entries_1)
 	if err != nil {
 		t.Errorf("Error sending client request to raft: %s", err)
@@ -146,31 +139,31 @@ func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 	// Check for committed
 	checkCommitted(t, raftNodes, res.CommitIndex)
 
-	// entries_2 := []map[string]interface{}{
-	// 	{
-	// 		"data": "this should be the fifth",
-	// 		"term": term,
-	// 	},
-	// 	{
-	// 		"data": "this should be the sixth",
-	// 		"term": term,
-	// 	},
-	// }
+	entries_2 := []map[string]interface{}{
+		{
+			"data": "this should be the fifth",
+			"term": term,
+		},
+		{
+			"data": "this should be the sixth",
+			"term": term,
+		},
+	}
 
-	// res, err = ClientSendData(entries_2)
-	// if err != nil {
-	// 	t.Errorf("Error sending client request to raft: %s", err)
-	// }
-	// time.Sleep(2 * time.Second)
+	res, err = ClientSendData(entries_2)
+	if err != nil {
+		t.Errorf("Error sending client request to raft: %s", err)
+	}
+	time.Sleep(2 * time.Second)
 
-	// // Check for exactly 1 leader
-	// checkLeaderElection(t, raftNodes)
-	// // Check for equality of terms across nodes
-	// checkTermEquality(t, raftNodes)
-	// // Check for complete equality of logs across nodes
-	// checkLogConsistency(t, raftNodes)
-	// // Check for committed
-	// checkCommitted(t, raftNodes, res.CommitIndex)
+	// Check for exactly 1 leader
+	checkLeaderElection(t, raftNodes)
+	// Check for equality of terms across nodes
+	checkTermEquality(t, raftNodes)
+	// Check for complete equality of logs across nodes
+	checkLogConsistency(t, raftNodes)
+	// Check for committed
+	checkCommitted(t, raftNodes, res.CommitIndex)
 
 	// var commitIndex int
 
@@ -178,36 +171,40 @@ func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 	// 	commitIndex = rf.commitIndex
 	// })
 
-	// // ensuring randnode isn't a leader node
-	// var randNode *Raft
-	// var randNodeState State
+	// ensuring randnode isn't a leader node
+	var randNode *Raft
+	var randNodeState State
 
-	// randNode = raftNodes[rand.Intn(len(raftNodes))]
-	// randNode.withLock("", func() {
-	// 	randNodeState = randNode.state
-	// })
-	// for randNodeState == Leader {
-	// 	randNode = raftNodes[rand.Intn(len(raftNodes))]
-	// 	randNode.withLock("", func() {
-	// 		randNodeState = randNode.state
-	// 	})
-	// }
+	randNode = raftNodes[rand.Intn(len(raftNodes))]
+	randNode.withLock("", func() {
+		randNodeState = randNode.state
+	})
+	for randNodeState == Leader {
+		randNode = raftNodes[rand.Intn(len(raftNodes))]
+		randNode.withLock("", func() {
+			randNodeState = randNode.state
+		})
+	}
 
-	// // randomly truncated incorrect log
-	// randNode.withLock("", func() {
-	// 	randNode.log = randNode.log[:2]
-	// 	randNode.commitIndex = 2
-	// })
-	// time.Sleep(2 * time.Second)
+	go func() {
+		utils.Debug.Store(1)
+		time.Sleep(4 * time.Second)
+		panic("timeout")
+	}()
 
-	// panic("here")
+	// randomly truncated incorrect log
+	randNode.withLock("", func() {
+		randNode.log = randNode.log[:2]
+		randNode.commitIndex = 2
+	})
+	time.Sleep(2 * time.Second)
 
-	// // Check for exactly 1 leader
-	// checkLeaderElection(t, raftNodes)
-	// // Check for equality of terms across nodes
-	// checkTermEquality(t, raftNodes)
-	// // Check for complete equality of logs across nodes
-	// checkLogConsistency(t, raftNodes)
+	// Check for exactly 1 leader
+	checkLeaderElection(t, raftNodes)
+	// Check for equality of terms across nodes
+	checkTermEquality(t, raftNodes)
+	// Check for complete equality of logs across nodes
+	checkLogConsistency(t, raftNodes)
 	// // Check for committed
 	// checkCommitted(t, raftNodes, commitIndex)
 
@@ -365,8 +362,10 @@ func checkLeaderElection(t *testing.T, raftNodes []*Raft) {
 	t.Helper()
 	var leaderCnt int = 0
 
-	for _, rf := range raftNodes {
+	for i, rf := range raftNodes {
 		var killed bool
+
+		log.Printf("ooga booga %d\n", i)
 
 		rf.withLock("", func() {
 			if rf.killed() {
@@ -378,6 +377,8 @@ func checkLeaderElection(t *testing.T, raftNodes []*Raft) {
 				leaderCnt += 1
 			}
 		})
+
+		log.Printf("ooga booga done %d\n", i)
 
 		if killed {
 			continue

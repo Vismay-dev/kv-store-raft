@@ -67,6 +67,7 @@ func (rf *Raft) Start() {
 	var rfState State
 	rf.withLock("", func() {
 		rfState = rf.state
+		rf.readPersist()
 	})
 
 	go rf.electionTimeout()

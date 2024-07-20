@@ -2,6 +2,7 @@ package raft
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -15,17 +16,17 @@ func (rf *Raft) electionTimeout() {
 	timeout := time.Duration(350+rand.Intn(250)) * time.Millisecond
 
 	for {
-		// if rf.killed() {
-		// 	// rf.withLock("", func(){
-		// 	// 	utils.Dprintf(
-		// 	// 		"[%d @ %s] this node has been killed\n",
-		// 	// 		rf.me,
-		// 	// 		rf.peers[rf.me],
-		// 	// 	)
-		// 	// })
-		// 	time.Sleep(10 * time.Millisecond)
-		// 	continue
-		// }
+		if rf.killed() {
+			// rf.withLock("", func(){
+			// 	utils.Dprintf(
+			// 		"[%d @ %s] this node has been killed\n",
+			// 		rf.me,
+			// 		rf.peers[rf.me],
+			// 	)
+			// })
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
 		select {
 		case <-rf.timerChElection:
 			var isNotLeader bool = false
@@ -77,6 +78,11 @@ func (rf *Raft) startElection() {
 		rf.state = Candidate
 		rf.currentTerm += 1
 		rf.votedFor = rf.me
+
+		if err := rf.persist(); err != nil {
+			log.Fatalf("Error persisting: %s\n", err)
+		}
+
 		me = rf.me
 		args = &RequestVoteRequest{
 			Term:         rf.currentTerm,
@@ -104,6 +110,10 @@ func (rf *Raft) startElection() {
 							rf.currentTerm = reply.Term
 							rf.votedFor = -1
 							rf.state = Follower
+
+							if err := rf.persist(); err != nil {
+								log.Fatalf("Error persisting: %s\n", err)
+							}
 						} else if reply.Term == rf.currentTerm && reply.VoteGranted {
 							atomic.AddInt32(&votes, 1)
 						}
@@ -227,6 +237,10 @@ func (rf *Raft) HandleRequestVote(
 			)
 		} else {
 			RequestVoteRes.VoteGranted = false
+		}
+
+		if err := rf.persist(); err != nil {
+			log.Fatalf("Error persisting: %s\n", err)
 		}
 
 		RequestVoteRes.Term = rf.currentTerm

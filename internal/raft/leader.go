@@ -112,6 +112,9 @@ func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) {
 						if reply.Term > rf.currentTerm && !reply.Success {
 							rf.state = Follower
 							rf.votedFor = -1
+							if err := rf.persist(); err != nil {
+								log.Fatalf("Error persisting: %s\n", err)
+							}
 							utils.Dprintf(
 								"[%d @ %s] (leader) heartbeat failed; reverting to follower\n",
 								rf.me,
@@ -215,6 +218,10 @@ func (rf *Raft) SendData(
 		}
 
 		rf.log = append(rf.log, ClientReqReq.Entries...)
+		if err := rf.persist(); err != nil {
+			log.Fatalf("Error persisting: %s\n", err)
+		}
+
 		commitIndex = rf.commitIndex
 	})
 

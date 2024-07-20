@@ -35,6 +35,9 @@ func (rf *Raft) HandleAppendEntry(
 			rf.currentTerm = AppendEntryReq.Term
 			rf.state = Follower
 			rf.votedFor = -1
+			if err := rf.persist(); err != nil {
+				log.Fatalf("Error persisting: %s\n", err)
+			}
 			go rf.electionTimeout()
 		}
 
@@ -82,6 +85,9 @@ func (rf *Raft) HandleAppendEntry(
 				rf.log = rf.log[:0]
 			}
 			rf.log = append(rf.log[:AppendEntryReq.PrevLogIndex], AppendEntryReq.Entries...)
+			if err := rf.persist(); err != nil {
+				log.Fatalf("Error persisting: %s\n", err)
+			}
 			utils.Dprintf(
 				"[%d @ %s] log added succesfully\n",
 				rf.me,
@@ -95,6 +101,10 @@ func (rf *Raft) HandleAppendEntry(
 		rf.currentTerm = AppendEntryReq.Term
 		rf.leaderId = AppendEntryReq.LeaderId
 		rf.commitIndex = min(AppendEntryReq.LeaderCommit, len(rf.log))
+
+		if err := rf.persist(); err != nil {
+			log.Fatalf("Error persisting: %s\n", err)
+		}
 
 		AppendEntryRes.Term = rf.currentTerm
 		AppendEntryRes.Success = true
