@@ -16,6 +16,7 @@ func (rf *Raft) HandleAppendEntry(
 	}
 
 	var err error
+	var shouldStartElec bool = false
 
 	rf.withLock("", func() {
 		utils.Dprintf(
@@ -35,10 +36,7 @@ func (rf *Raft) HandleAppendEntry(
 			rf.currentTerm = AppendEntryReq.Term
 			rf.state = Follower
 			rf.votedFor = -1
-			if err := rf.persist(); err != nil {
-				log.Fatalf("Error persisting: %s\n", err)
-			}
-			go rf.electionTimeout()
+			shouldStartElec = true
 		}
 
 		if rf.currentTerm > AppendEntryReq.Term {
@@ -85,14 +83,15 @@ func (rf *Raft) HandleAppendEntry(
 				rf.log = rf.log[:0]
 			}
 			rf.log = append(rf.log[:AppendEntryReq.PrevLogIndex], AppendEntryReq.Entries...)
-			if err := rf.persist(); err != nil {
-				log.Fatalf("Error persisting: %s\n", err)
-			}
 			utils.Dprintf(
 				"[%d @ %s] log added succesfully\n",
 				rf.me,
 				rf.peers[rf.me],
 			)
+		}
+
+		if shouldStartElec {
+			go rf.electionTimeout()
 		}
 
 		rf.timerChElection <- struct{}{}
@@ -102,12 +101,12 @@ func (rf *Raft) HandleAppendEntry(
 		rf.leaderId = AppendEntryReq.LeaderId
 		rf.commitIndex = min(AppendEntryReq.LeaderCommit, len(rf.log))
 
+		AppendEntryRes.Term = rf.currentTerm
+		AppendEntryRes.Success = true
+
 		if err := rf.persist(); err != nil {
 			log.Fatalf("Error persisting: %s\n", err)
 		}
-
-		AppendEntryRes.Term = rf.currentTerm
-		AppendEntryRes.Success = true
 
 		err = nil
 	})
