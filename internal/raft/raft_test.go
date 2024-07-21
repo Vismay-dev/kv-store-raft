@@ -5,8 +5,6 @@ import (
 	"math/rand"
 	"testing"
 	"time"
-
-	"github.com/vismaysur/kv-store-raft/internal/raft/utils"
 )
 
 type TestCase func(t *testing.T, raftNodes []*Raft, peerAddresses []string)
@@ -18,7 +16,7 @@ func TestRaft(t *testing.T) {
 	for testName, testFunc := range map[string]TestCase{
 		"TestLeaderElectionNormal":           testLeaderElectionNormal,
 		"TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
-		// "TestLogReplication": testLogReplication,
+		"TestLogReplication":                 testLogReplication,
 	} {
 		t.Run(testName, func(t *testing.T) {
 			testFunc(t, raftNodes, peerAddrs)
@@ -51,12 +49,6 @@ func testLeaderElectionNetworkPartition(t *testing.T, raftNodes []*Raft, _ []str
 			randNodeState = randNode.state
 		})
 	}
-
-	go func() {
-		utils.Debug.Store(1)
-		time.Sleep(12 * time.Second)
-		panic("timeout")
-	}()
 
 	log.Printf("[==tester==] Killing random follower node (%d)", idx)
 	randNode.Kill()
@@ -256,12 +248,6 @@ func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 	checkLogConsistency(t, raftNodes)
 	// Check for committed
 	checkCommitted(t, raftNodes, res.CommitIndex)
-
-	////
-
-	////
-
-	////
 
 	// selecting leader node
 	var leaderNode *Raft
