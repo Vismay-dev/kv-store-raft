@@ -91,6 +91,8 @@ func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) {
 			go func(peerAddr string, idx int, rpcArgs AppendEntriesRequest) {
 				var reply AppendEntriesResponse
 
+				log.Printf("here - %s", peerAddr)
+
 				rf.withLock("", func() {
 					if rf.nextIndex[idx] <= len(rf.log) {
 						utils.Dprintf(
