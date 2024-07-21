@@ -19,12 +19,12 @@ func (rf *Raft) HandleAppendEntry(
 	var shouldStartElec bool = false
 
 	rf.withLock("", func() {
-		utils.Dprintf(
-			"[%d @ %s] received append entry from leader: %d\n",
-			rf.me,
-			rf.peers[rf.me],
-			rf.leaderId,
-		)
+		// utils.Dprintf(
+		// 	"[%d @ %s] received append entry from leader: %d\n",
+		// 	rf.me,
+		// 	rf.peers[rf.me],
+		// 	rf.leaderId,
+		// )
 
 		if AppendEntryReq.Term > rf.currentTerm {
 			utils.Dprintf(
@@ -90,11 +90,9 @@ func (rf *Raft) HandleAppendEntry(
 			)
 		}
 
-		if shouldStartElec {
-			go rf.electionTimeout()
+		if !shouldStartElec {
+			rf.timerChElection <- struct{}{}
 		}
-
-		rf.timerChElection <- struct{}{}
 
 		rf.state = Follower
 		rf.currentTerm = AppendEntryReq.Term
@@ -110,6 +108,10 @@ func (rf *Raft) HandleAppendEntry(
 
 		err = nil
 	})
+
+	if shouldStartElec {
+		go rf.electionTimeout()
+	}
 
 	return err
 }

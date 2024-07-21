@@ -257,6 +257,12 @@ func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 	// Check for committed
 	checkCommitted(t, raftNodes, res.CommitIndex)
 
+	////
+
+	////
+
+	////
+
 	// selecting leader node
 	var leaderNode *Raft
 	for _, node := range raftNodes {
@@ -266,12 +272,6 @@ func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 			}
 		})
 	}
-
-	////
-
-	////
-
-	////
 
 	leaderNode.Kill()
 	time.Sleep(1 * time.Second)
@@ -306,12 +306,6 @@ func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 	checkLogConsistency(t, raftNodes)
 	// Check for committed
 	checkCommitted(t, raftNodes, res.CommitIndex)
-
-	go func() {
-		utils.Debug.Store(1)
-		time.Sleep(5 * time.Second)
-		panic("timeout")
-	}()
 
 	leaderNode.Revive()
 	time.Sleep(1 * time.Second)
@@ -396,14 +390,21 @@ func checkLogConsistency(t *testing.T, raftNodes []*Raft) {
 	t.Helper()
 
 	var log []map[string]interface{}
-	node := raftNodes[0]
+
+	var idx int = 0
+	node := raftNodes[idx]
+
+	for node.killed() {
+		idx += 1
+		node = raftNodes[idx]
+	}
 
 	node.withLock("", func() {
 		log = node.log
 	})
 
-	for _, node := range raftNodes[1:] {
-		if node.killed() {
+	for i, node := range raftNodes[:] {
+		if node.killed() || i == idx {
 			continue
 		}
 		node.withLock("", func() {

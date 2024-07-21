@@ -25,6 +25,7 @@ func (rf *Raft) electionTimeout() {
 			// 	)
 			// })
 			time.Sleep(10 * time.Millisecond)
+			start = time.Now()
 			continue
 		}
 		select {
