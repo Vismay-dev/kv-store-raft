@@ -13,6 +13,12 @@ type TestCase func(t *testing.T, raftNodes []*Raft, peerAddresses []string)
 
 func TestRaft(t *testing.T) {
 	raftNodes, peerAddrs := setup(t)
+
+	go func() {
+		time.Sleep(40 * time.Second)
+		panic("test timed out...")
+	}()
+
 	for testName, testFunc := range map[string]TestCase{
 		"TestLeaderElectionNormal":           testLeaderElectionNormal,
 		"TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
