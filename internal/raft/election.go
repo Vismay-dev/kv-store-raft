@@ -115,7 +115,6 @@ func (rf *Raft) startElection() {
 			go func(peer string) {
 				var reply RequestVoteResponse
 				if rf.sendRequestVote(peer, args, &reply) {
-					log.Printf("here - %s", peer)
 					rf.withLock("", func() {
 						if reply.Term > rf.currentTerm {
 							rf.currentTerm = reply.Term
@@ -130,8 +129,6 @@ func (rf *Raft) startElection() {
 						}
 						cond.Broadcast()
 					})
-				} else {
-					log.Printf("err here - %s", peer)
 				}
 			}(peer)
 		}
@@ -250,7 +247,6 @@ func (rf *Raft) HandleRequestVote(
 				RequestVoteReq.CandidateId,
 			)
 		} else {
-			log.Printf("here - %d, %v, %v", rf.me, (RequestVoteReq.LastLogIndex > lastLogIndex), (RequestVoteReq.LastLogIndex == lastLogIndex && RequestVoteReq.LastLogTerm == lastLogTerm))
 			RequestVoteRes.VoteGranted = false
 		}
 

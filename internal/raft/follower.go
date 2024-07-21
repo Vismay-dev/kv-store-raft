@@ -54,12 +54,6 @@ func (rf *Raft) HandleAppendEntry(
 
 		if (AppendEntryReq.PrevLogIndex > 0 && len(rf.log) < AppendEntryReq.PrevLogIndex) ||
 			(AppendEntryReq.PrevLogIndex > 0 && rf.log[AppendEntryReq.PrevLogIndex-1]["term"].(int) != AppendEntryReq.PrevLogTerm) {
-			log.Printf(
-				"[%d @ %s] rejecting AppendEntry RPC from leader - x - %d\n",
-				rf.me,
-				rf.peers[rf.me],
-				AppendEntryReq.LeaderId,
-			)
 			utils.Dprintf(
 				"[%d @ %s] rejecting AppendEntry RPC from leader - x - %d\n",
 				rf.me,

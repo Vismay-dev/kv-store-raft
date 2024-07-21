@@ -58,7 +58,6 @@ func (rf *Raft) sendHeartbeats() {
 			})
 
 			if killed {
-				log.Print("HERE")
 				return
 			}
 
@@ -92,8 +91,6 @@ func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) {
 			go func(peerAddr string, idx int, rpcArgs AppendEntriesRequest) {
 				var reply AppendEntriesResponse
 
-				// log.Printf("here - %s", peerAddr)
-
 				rf.withLock("", func() {
 					if rf.nextIndex[idx] <= len(rf.log) {
 						utils.Dprintf(
@@ -125,10 +122,8 @@ func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) {
 								rf.peers[rf.me],
 							)
 						} else if reply.Term <= rf.currentTerm && !reply.Success && reply.Reason == "LogInconsistency" {
-							log.Printf("Reducing node's next index %s", peerAddr)
 							rf.nextIndex[idx] -= 1
 						} else if reply.Success {
-							// log.Print("HERE")
 							rf.matchIndex[idx] = len(rf.log)
 							rf.nextIndex[idx] = len(rf.log) + 1
 						}
@@ -161,8 +156,6 @@ func (rf *Raft) sendAppendEntry(
 			}
 		}
 	})
-
-	// log.Printf("here - %d", peerId)
 
 	rpcname := fmt.Sprintf("Raft-%d.HandleAppendEntry", peerId)
 	return rf.call(peer, rpcname, &req, &res)

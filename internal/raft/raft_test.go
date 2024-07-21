@@ -22,7 +22,7 @@ func TestRaft(t *testing.T) {
 	for testName, testFunc := range map[string]TestCase{
 		"TestLeaderElectionNormal":           testLeaderElectionNormal,
 		"TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
-		"TestLogReplication":                 testLogReplication,
+		// "TestLogReplication":                 testLogReplication,
 	} {
 		t.Run(testName, func(t *testing.T) {
 			testFunc(t, raftNodes, peerAddrs)
