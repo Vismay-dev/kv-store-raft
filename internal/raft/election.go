@@ -84,11 +84,20 @@ func (rf *Raft) startElection() {
 		}
 
 		me = rf.me
+
+		var prevLogTerm int
+		var prevLogIndex int = len(rf.log)
+		if len(rf.log) > 0 {
+			prevLogTerm = rf.log[len(rf.log)-1]["term"].(int)
+		} else {
+			prevLogTerm = 0
+		}
+
 		args = &RequestVoteRequest{
 			Term:         rf.currentTerm,
 			CandidateId:  rf.me,
-			LastLogIndex: 0,
-			LastLogTerm:  0,
+			LastLogIndex: prevLogIndex,
+			LastLogTerm:  prevLogTerm,
 		}
 		peerAddrs = make([]string, len(rf.peers))
 		copy(peerAddrs, rf.peers)
@@ -105,6 +114,7 @@ func (rf *Raft) startElection() {
 			go func(peer string) {
 				var reply RequestVoteResponse
 				if rf.sendRequestVote(peer, args, &reply) {
+					log.Printf("here - %s", peer)
 					rf.withLock("", func() {
 						if reply.Term > rf.currentTerm {
 							rf.currentTerm = reply.Term
@@ -119,6 +129,8 @@ func (rf *Raft) startElection() {
 						}
 						cond.Broadcast()
 					})
+				} else {
+					log.Printf("err here - %s", peer)
 				}
 			}(peer)
 		}
@@ -221,12 +233,13 @@ func (rf *Raft) HandleRequestVote(
 
 		lastLogIndex := len(rf.log)
 		lastLogTerm := 0
+
 		if lastLogIndex > 0 {
 			lastLogTerm = rf.log[lastLogIndex-1]["term"].(int)
 		}
 
 		if (rf.votedFor == -1 || rf.votedFor == RequestVoteReq.CandidateId) &&
-			(RequestVoteReq.LastLogIndex > lastLogIndex || (RequestVoteReq.LastLogTerm == lastLogTerm && RequestVoteReq.LastLogIndex >= lastLogIndex)) {
+			(RequestVoteReq.LastLogIndex > lastLogIndex || (RequestVoteReq.LastLogIndex == lastLogIndex && RequestVoteReq.LastLogTerm == lastLogTerm)) {
 			rf.votedFor = RequestVoteReq.CandidateId
 			RequestVoteRes.VoteGranted = true
 			utils.Dprintf(
@@ -236,6 +249,7 @@ func (rf *Raft) HandleRequestVote(
 				RequestVoteReq.CandidateId,
 			)
 		} else {
+			log.Printf("here - %d, %v, %v", rf.me, (RequestVoteReq.LastLogIndex > lastLogIndex), (RequestVoteReq.LastLogIndex == lastLogIndex && RequestVoteReq.LastLogTerm == lastLogTerm))
 			RequestVoteRes.VoteGranted = false
 		}
 
@@ -245,12 +259,12 @@ func (rf *Raft) HandleRequestVote(
 
 		RequestVoteRes.Term = rf.currentTerm
 
-		if RequestVoteRes.VoteGranted {
-			rf.timerChElection <- struct{}{}
-		}
-
 		err = nil
 	})
+
+	if RequestVoteRes.VoteGranted {
+		rf.timerChElection <- struct{}{}
+	}
 
 	return err
 }

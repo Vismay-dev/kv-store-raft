@@ -131,24 +131,24 @@ func (rf *Raft) serve() {
 func (rf *Raft) withLock(label string, f func()) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	if label == "sendAppendEntry" {
-		utils.Dprintf(
-			"[%d @ %s] acquiring lock here - isLeader: %v; label: %s\n",
-			rf.me,
-			rf.peers[rf.me],
-			rf.me == rf.leaderId,
-			label,
-		)
-	}
+	// if label == "sendAppendEntry" {
+	// 	utils.Dprintf(
+	// 		"[%d @ %s] acquiring lock here - isLeader: %v; label: %s\n",
+	// 		rf.me,
+	// 		rf.peers[rf.me],
+	// 		rf.me == rf.leaderId,
+	// 		label,
+	// 	)
+	// }
 
 	f()
-	if label == "sendAppendEntry" {
-		utils.Dprintf(
-			"[%d @ %s] releasing lock here - isLeader: %v; label: %s\n",
-			rf.me,
-			rf.peers[rf.me],
-			rf.me == rf.leaderId,
-			label,
-		)
-	}
+	// if label == "sendAppendEntry" {
+	// 	utils.Dprintf(
+	// 		"[%d @ %s] releasing lock here - isLeader: %v; label: %s\n",
+	// 		rf.me,
+	// 		rf.peers[rf.me],
+	// 		rf.me == rf.leaderId,
+	// 		label,
+	// 	)
+	// }
 }

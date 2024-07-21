@@ -24,11 +24,6 @@ func (rf *Raft) sendHeartbeats() {
 			var killed bool = false
 
 			rf.withLock("", func() {
-				if rf.state != Leader {
-					isNotLeader = true
-					return
-				}
-
 				if rf.killed() {
 					utils.Dprintf(
 						"[%d @ %s] node is dead; try heartbeat again later\n",
@@ -36,6 +31,11 @@ func (rf *Raft) sendHeartbeats() {
 						rf.peers[rf.me],
 					)
 					killed = true
+					return
+				}
+
+				if rf.state != Leader {
+					isNotLeader = true
 					return
 				}
 
@@ -57,12 +57,12 @@ func (rf *Raft) sendHeartbeats() {
 				}
 			})
 
-			if isNotLeader {
-				go rf.electionTimeout()
+			if killed {
 				return
 			}
 
-			if killed {
+			if isNotLeader {
+				go rf.electionTimeout()
 				return
 			}
 
@@ -94,10 +94,11 @@ func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) {
 				rf.withLock("", func() {
 					if rf.nextIndex[idx] <= len(rf.log) {
 						utils.Dprintf(
-							"[%d @ %s] log coherence issue detected for follower @ %s\n",
+							"[%d @ %s] log coherence issue detected for follower @ %s; %+v\n",
 							rf.me,
 							rf.peers[rf.me],
 							peerAddr,
+							rf.log[rf.nextIndex[idx]-1:],
 						)
 						rpcArgs.Entries = rf.log[rf.nextIndex[idx]-1:]
 						rpcArgs.PrevLogIndex = rf.nextIndex[idx] - 1
