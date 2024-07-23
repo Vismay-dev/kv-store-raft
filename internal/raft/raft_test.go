@@ -5,8 +5,6 @@ import (
 	"math/rand"
 	"testing"
 	"time"
-
-	"github.com/vismaysur/kv-store-raft/internal/raft/utils"
 )
 
 type TestCase func(t *testing.T, raftNodes []*Raft, peerAddresses []string)
@@ -17,15 +15,15 @@ func TestRaft(t *testing.T) {
 	raftNodes, peerAddrs := setup(t)
 
 	go func() {
-		utils.Debug.Store(1)
-		time.Sleep(8 * time.Second)
+		// utils.Debug.Store(1)
+		time.Sleep(17 * time.Second)
 		panic("test timed out...")
 	}()
 
 	for testName, testFunc := range map[string]TestCase{
-		"TestLeaderElectionNormal": testLeaderElectionNormal,
-		// "TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
-		// "TestLogReplication":                 testLogReplication,
+		"TestLeaderElectionNormal":           testLeaderElectionNormal,
+		"TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
+		"TestLogReplication":                 testLogReplication,
 	} {
 		t.Run(testName, func(t *testing.T) {
 			testFunc(t, raftNodes, peerAddrs)
