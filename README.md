@@ -12,6 +12,14 @@ To run tests, use the following command:
 make test
 ```
 
-### Additional Reference
+### Additional References
 
 - [MIT 6.8240 Spring 20'](https://www.youtube.com/watch?v=64Zp3tzNbpE&list=PLrw6a1wE39_tb2fErI4-WkMbsvGQk9_UB&index=7)
+- [ZooKeeper](https://www.usenix.org/legacy/event/atc10/tech/full_papers/Hunt.pdf)
+- [CRAQ](https://www.usenix.org/legacy/event/usenix09/tech/full_papers/terrace/terrace.pdf)
+- [Aurora DB - Cloud Replicated DB](https://pages.cs.wisc.edu/~yxy/cs764-f20/papers/aurora-sigmod-17.pdf)
+- [Fringipani - Cache Consistency](https://pdos.csail.mit.edu/6.824/papers/thekkath-frangipani.pdf)
+
+### Note
+
+- While this project is heavily inspired by the MIT 6.8240 labs, it does not borrow/use any code or design choices from an implementation by any faculty/student involved with the course.
