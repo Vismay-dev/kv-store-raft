@@ -12,22 +12,9 @@ import (
 )
 
 func (rf *Raft) electionTimeout() {
-	start := time.Now()
-	timeout := time.Duration(350+rand.Intn(250)) * time.Millisecond
+	ticker := time.NewTicker(time.Duration(350+rand.Intn(250)) * time.Millisecond)
 
 	for {
-		if rf.killed() {
-			// rf.withLock("", func(){
-			// 	utils.Dprintf(
-			// 		"[%d @ %s] this node has been killed\n",
-			// 		rf.me,
-			// 		rf.peers[rf.me],
-			// 	)
-			// })
-			time.Sleep(10 * time.Millisecond)
-			start = time.Now()
-			continue
-		}
 		select {
 		case <-rf.timerChElection:
 			var isNotLeader bool = false
@@ -42,29 +29,35 @@ func (rf *Raft) electionTimeout() {
 				go rf.electionTimeout()
 			}
 			return
-		default:
-			now := time.Now()
-			elapsed := now.Sub(start)
-			if elapsed > timeout {
-				rf.withLock("", func() {
-					if rf.state == Candidate {
-						rf.state = Follower
-						utils.Dprintf(
-							"[%d @ %s] restarting election...\n",
-							rf.me,
-							rf.peers[rf.me],
-						)
-					} else {
-						utils.Dprintf(
-							"[%d @ %s] starting election...\n",
-							rf.me,
-							rf.peers[rf.me],
-						)
-					}
-				})
-				go rf.startElection()
-				return
+		case <-ticker.C:
+			if rf.killed() {
+				// rf.withLock("", func(){
+				// 	utils.Dprintf(
+				// 		"[%d @ %s] this node has been killed\n",
+				// 		rf.me,
+				// 		rf.peers[rf.me],
+				// 	)
+				// })
+				continue
 			}
+			rf.withLock("", func() {
+				if rf.state == Candidate {
+					rf.state = Follower
+					utils.Dprintf(
+						"[%d @ %s] restarting election...\n",
+						rf.me,
+						rf.peers[rf.me],
+					)
+				} else {
+					utils.Dprintf(
+						"[%d @ %s] starting election...\n",
+						rf.me,
+						rf.peers[rf.me],
+					)
+				}
+			})
+			go rf.startElection()
+			return
 		}
 	}
 }
@@ -224,6 +217,12 @@ func (rf *Raft) HandleRequestVote(
 		}
 
 		if rf.currentTerm < RequestVoteReq.Term {
+			utils.Dprintf(
+				"[%d @ %s] HERE %d\n",
+				rf.me,
+				rf.peers[rf.me],
+				RequestVoteReq.CandidateId,
+			)
 			rf.currentTerm = RequestVoteReq.Term
 			rf.votedFor = -1
 			rf.state = Follower
@@ -240,6 +239,7 @@ func (rf *Raft) HandleRequestVote(
 			(RequestVoteReq.LastLogIndex > lastLogIndex || (RequestVoteReq.LastLogIndex == lastLogIndex && RequestVoteReq.LastLogTerm == lastLogTerm)) {
 			rf.votedFor = RequestVoteReq.CandidateId
 			RequestVoteRes.VoteGranted = true
+			rf.timerChElection <- struct{}{}
 			utils.Dprintf(
 				"[%d @ %s] voting for candidate %d\n",
 				rf.me,
@@ -258,10 +258,6 @@ func (rf *Raft) HandleRequestVote(
 
 		err = nil
 	})
-
-	if RequestVoteRes.VoteGranted {
-		rf.timerChElection <- struct{}{}
-	}
 
 	return err
 }

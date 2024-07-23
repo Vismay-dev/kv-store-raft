@@ -19,12 +19,12 @@ func (rf *Raft) HandleAppendEntry(
 	var shouldStartElec bool = false
 
 	rf.withLock("", func() {
-		// utils.Dprintf(
-		// 	"[%d @ %s] received append entry from leader: %d\n",
-		// 	rf.me,
-		// 	rf.peers[rf.me],
-		// 	rf.leaderId,
-		// )
+		utils.Dprintf(
+			"[%d @ %s] received append entry from leader: %d\n",
+			rf.me,
+			rf.peers[rf.me],
+			rf.leaderId,
+		)
 
 		if AppendEntryReq.Term > rf.currentTerm {
 			utils.Dprintf(

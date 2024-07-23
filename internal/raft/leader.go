@@ -10,15 +10,14 @@ import (
 )
 
 func (rf *Raft) sendHeartbeats() {
-	start := time.Now()
-	timeout := time.Duration(40) * time.Millisecond
+	ticker := time.NewTicker(40 * time.Millisecond)
+	defer ticker.Stop()
 
 	for {
 		select {
 		case <-rf.timerChHb:
-			go rf.sendHeartbeats()
-			return
-		default:
+			ticker.Reset(40 * time.Millisecond)
+		case <-ticker.C:
 			var isNotLeader bool = false
 			var args *AppendEntriesRequest
 			var killed bool = false
@@ -66,12 +65,7 @@ func (rf *Raft) sendHeartbeats() {
 				return
 			}
 
-			now := time.Now()
-			elapsed := now.Sub(start)
-			if elapsed >= timeout {
-				rf.sendAppendEntries(args)
-				start = now
-			}
+			rf.sendAppendEntries(args)
 		}
 	}
 }

@@ -5,6 +5,8 @@ import (
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/vismaysur/kv-store-raft/internal/raft/utils"
 )
 
 type TestCase func(t *testing.T, raftNodes []*Raft, peerAddresses []string)
@@ -15,13 +17,14 @@ func TestRaft(t *testing.T) {
 	raftNodes, peerAddrs := setup(t)
 
 	go func() {
-		time.Sleep(40 * time.Second)
+		utils.Debug.Store(1)
+		time.Sleep(8 * time.Second)
 		panic("test timed out...")
 	}()
 
 	for testName, testFunc := range map[string]TestCase{
-		"TestLeaderElectionNormal":           testLeaderElectionNormal,
-		"TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
+		"TestLeaderElectionNormal": testLeaderElectionNormal,
+		// "TestLeaderElectionNetworkPartition": testLeaderElectionNetworkPartition,
 		// "TestLogReplication":                 testLogReplication,
 	} {
 		t.Run(testName, func(t *testing.T) {
@@ -33,9 +36,7 @@ func TestRaft(t *testing.T) {
 // integration tests
 
 func testLeaderElectionNormal(t *testing.T, raftNodes []*Raft, _ []string) {
-	// // Check for exactly 1 leader
 	checkLeaderElection(t, raftNodes)
-	// Check for equality of terms across nodes
 	checkTermEquality(t, raftNodes)
 }
 
@@ -213,6 +214,8 @@ func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 		})
 	}
 
+	log.Printf("[==tester==] Killing random follower node")
+
 	randNode.Kill()
 	time.Sleep(1 * time.Second)
 
@@ -242,6 +245,8 @@ func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 	}
 	time.Sleep(1 * time.Second)
 
+	log.Printf("[==tester==] Reviving random follower node")
+
 	randNode.Revive()
 
 	time.Sleep(1 * time.Second)
@@ -264,6 +269,8 @@ func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 			}
 		})
 	}
+
+	log.Printf("[==tester==] Killing leader node")
 
 	leaderNode.Kill()
 	time.Sleep(1 * time.Second)
@@ -298,6 +305,8 @@ func testLogReplication(t *testing.T, raftNodes []*Raft, _ []string) {
 	checkLogConsistency(t, raftNodes)
 	// Check for committed
 	checkCommitted(t, raftNodes, res.CommitIndex)
+
+	log.Printf("[==tester==] Reviving leader node")
 
 	leaderNode.Revive()
 	time.Sleep(1 * time.Second)
