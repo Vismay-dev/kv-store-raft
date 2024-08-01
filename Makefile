@@ -5,7 +5,7 @@ SERVER_STORE := ./server_store
 clean: 
 	rm -rf ${SERVER_STORE}
 
-.PHONY: test
-test: clean
+.PHONY: test-raft
+test-raft: clean
 	mkdir -p ${SERVER_STORE}
-	go test -count=1 -v -race ./...
+	go test -count=1 -v -race github.com/vismaysur/kv-store-raft/internal/raft

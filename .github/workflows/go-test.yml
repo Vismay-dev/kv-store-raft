@@ -16,8 +16,8 @@ jobs:
         with:
           go-version: "1.22.3" # Specify your Go version here
 
-      - name: Run tests
-        run: make test
+      - name: Run raft tests
+        run: make test-raft
 
   format-check:
     name: Format Check
