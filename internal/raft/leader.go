@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/vismaysur/kv-store-raft/internal/raft/utils"
+	"github.com/vismaysur/kv-store-raft/internal/utils"
 )
 
 func (rf *Raft) sendHeartbeats() {

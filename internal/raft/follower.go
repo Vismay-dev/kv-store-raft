@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/vismaysur/kv-store-raft/internal/raft/utils"
+	"github.com/vismaysur/kv-store-raft/internal/utils"
 )
 
 func (rf *Raft) HandleAppendEntry(

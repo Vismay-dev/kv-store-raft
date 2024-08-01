@@ -4,7 +4,15 @@
 
 Scalable and fault-tolerant distributed key-value store implementing the Raft consensus protocol for strong consistency. Based on the [Raft Consensus Algorithm](http://nil.lcs.mit.edu/6.824/2020/papers/raft-extended.pdf) extended paper by Diego Ongaro and John Ousterhout.
 
-### Integration Flow / Architecture
+**Key Points:**
+
+- Fault tolerance is achieved via state-machine replication.
+- Strong consistency is guaranteed by the Raft protocol (implemented from scratch).
+- GETS can be served from any server node. PUTS/APPENDS can only be served by leader nodes.
+- High performance is achieved via sharding and replica groups. (🚧)
+- Support for AWS S3 storage for enterprise-grade durability and scalability. (🚧)
+
+### Integration Flow
 
 ```mermaid
 sequenceDiagram
