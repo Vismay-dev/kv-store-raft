@@ -31,13 +31,6 @@ func (rf *Raft) electionTimeout() {
 			return
 		case <-ticker.C:
 			if rf.killed() {
-				// rf.withLock("", func(){
-				// 	utils.Dprintf(
-				// 		"[%d @ %s] this node has been killed\n",
-				// 		rf.me,
-				// 		rf.peers[rf.me],
-				// 	)
-				// })
 				continue
 			}
 			rf.withLock("", func() {
