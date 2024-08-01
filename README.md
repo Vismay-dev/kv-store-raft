@@ -2,17 +2,19 @@
 
 ![Raft Tests CI](https://github.com/vismaysur/kv-store-raft/actions/workflows/go-test.yml/badge.svg)
 
-Scalable and fault-tolerant distributed key-value store implementing the Raft consensus protocol for strong consistency. Based on the [Raft Consensus Algorithm](http://nil.lcs.mit.edu/6.824/2020/papers/raft-extended.pdf) extended paper by Diego Ongaro and John Ousterhout.
+Scalable and fault-tolerant distributed key-value store implementing the Raft consensus protocol for strong consistency. Based on the [Raft Consensus Algorithm](http://nil.lcs.mit.edu/6.824/2020/papers/raft-extended.pdf) extended paper by Diego Ongaro and John Ousterhout. The underlying details of client interaction design differ slightly from the specification in the paper.
 
 **Key Points:**
 
 - Fault tolerance is achieved via state-machine replication.
 - Strong consistency is guaranteed by the Raft protocol (implemented from scratch).
 - GETS can be served from any server node. PUTS/APPENDS can only be served by leader nodes.
+- Networking support built using the Go RPC package (instead of gRPC).
+- Compaction of Raft logs via snapshotting. (🚧)
 - High performance is achieved via sharding and replica groups. (🚧)
-- Support for AWS S3 storage for enterprise-grade durability and scalability. (🚧)
+- AWS EC2 hosting & S3 storage for enterprise-grade durability and scalability. (🚧)
 
-### Integration Flow
+### Integration Flow (Single Replica Group)
 
 ```mermaid
 sequenceDiagram
