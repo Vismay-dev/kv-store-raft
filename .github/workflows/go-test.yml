@@ -14,10 +14,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
-          go-version: "1.22.3" # Specify your Go version here
+          go-version: "1.22.3"
 
-      - name: Run raft tests
+      - name: raft tests
         run: make test-raft
+
+      - name: kv-store tests
+        run: make test-kvstore
 
   format-check:
     name: Format Check

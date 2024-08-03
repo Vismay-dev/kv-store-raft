@@ -464,7 +464,7 @@ func setup(t *testing.T) ([]*Raft, []string) {
 	peerAddresses := []string{":8000", ":8001", ":8002", ":8003", ":8004"}
 	raftNodes := []*Raft{}
 	for i := range peerAddresses {
-		rf := Make(peerAddresses, i)
+		rf := Make(peerAddresses, i, nil, nil)
 		raftNodes = append(raftNodes, rf)
 	}
 

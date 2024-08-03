@@ -7,6 +7,7 @@ import (
 	"net/rpc"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/vismaysur/kv-store-raft/internal/utils"
 )
@@ -36,10 +37,13 @@ type Raft struct {
 	matchIndex  []int
 	leaderId    int
 
+	applyCh chan map[string]interface{}
+	opCh    chan map[string]interface{}
+
 	dead int32
 }
 
-func Make(peers []string, me int) *Raft {
+func Make(peers []string, me int, applyCh, opCh chan map[string]interface{}) *Raft {
 	rf := &Raft{
 		state:           Follower,
 		me:              me,
@@ -54,6 +58,8 @@ func Make(peers []string, me int) *Raft {
 		lastApplied: 0,
 		nextIndex:   []int{},
 		matchIndex:  []int{},
+		applyCh:     applyCh,
+		opCh:        opCh,
 
 		dead: 0,
 	}
@@ -71,6 +77,7 @@ func (rf *Raft) Start() {
 	})
 
 	go rf.electionTimeout()
+	go rf.trackLastApplied()
 	if rfState == Leader {
 		go rf.sendHeartbeats()
 		return
@@ -134,6 +141,28 @@ func (rf *Raft) serve() {
 			go rpc.ServeConn(conn)
 		}
 	}()
+}
+
+func (rf *Raft) trackLastApplied() {
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			var op map[string]interface{}
+			rf.withLock("", func() {
+				if rf.commitIndex > rf.lastApplied {
+					op = rf.log[rf.lastApplied]
+					rf.lastApplied++
+				}
+			})
+			if op != nil {
+				rf.applyCh <- op
+				<-rf.opCh
+			}
+		}
+	}
 }
 
 func (rf *Raft) withLock(_ string, f func()) {

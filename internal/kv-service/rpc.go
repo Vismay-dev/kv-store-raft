@@ -9,8 +9,9 @@ import (
 )
 
 type GetRequest struct {
-	Key   string
-	ReqId int32
+	Key      string
+	ReqId    int32
+	ClientId int32
 }
 
 type GetResponse struct {
@@ -19,10 +20,11 @@ type GetResponse struct {
 }
 
 type PutAppendRequest struct {
-	Key   string
-	Value string
-	Op    string
-	ReqId int32
+	Key      string
+	Value    string
+	Op       string
+	ReqId    int32
+	ClientId int32
 }
 
 type PutAppendResponse struct {

@@ -16,11 +16,11 @@ type Clerk struct {
 
 func MakeClerk(servers []*Server, clientId int32) *Clerk {
 	ck := &Clerk{
-		servers:  servers,
-		clientId: clientId,
+		servers:   servers,
+		clientId:  clientId,
+		leaderId:  0,
+		requestId: 0,
 	}
-
-	ck.leaderId = 0
 
 	return ck
 }
@@ -29,8 +29,9 @@ func (ck *Clerk) Get(key string) (string, error) {
 	atomic.AddInt32(&ck.requestId, 1)
 
 	args := &GetRequest{
-		Key:   key,
-		ReqId: ck.requestId,
+		Key:      key,
+		ReqId:    ck.requestId,
+		ClientId: ck.clientId,
 	}
 
 	server := ck.leaderId
@@ -62,10 +63,11 @@ func (ck *Clerk) Put(key string, value string) error {
 	leaderId := atomic.LoadInt32(&ck.leaderId)
 
 	args := &PutAppendRequest{
-		Key:   key,
-		Value: value,
-		Op:    "Put",
-		ReqId: ck.requestId,
+		Key:      key,
+		Value:    value,
+		Op:       "Put",
+		ReqId:    ck.requestId,
+		ClientId: ck.clientId,
 	}
 
 	server := leaderId
@@ -95,10 +97,11 @@ func (ck *Clerk) Append(key string, arg string) error {
 	leaderId := atomic.LoadInt32(&ck.leaderId)
 
 	args := &PutAppendRequest{
-		Key:   key,
-		Value: arg,
-		Op:    "Append",
-		ReqId: ck.requestId,
+		Key:      key,
+		Value:    arg,
+		Op:       "Append",
+		ReqId:    ck.requestId,
+		ClientId: ck.clientId,
 	}
 
 	server := leaderId

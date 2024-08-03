@@ -2,8 +2,12 @@ package kvservice
 
 import (
 	"fmt"
+	"log"
 	"net/rpc"
+	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/vismaysur/kv-store-raft/internal/raft"
 	"github.com/vismaysur/kv-store-raft/internal/utils"
@@ -16,18 +20,30 @@ type Server struct {
 	me      int
 	address string
 	store   map[string]string
+
+	lastApplied map[int]int
+	applyCh     chan map[string]interface{}
+	opCh        chan map[string]interface{}
 }
 
 func StartServer(peerAddresses []string, me int) *Server {
+	applyCh := make(chan map[string]interface{}, 1)
+	opCh := make(chan map[string]interface{}, 1)
+
 	kv := &Server{
-		me:      me,
-		store:   make(map[string]string),
-		address: peerAddresses[me],
-		rf:      raft.Make(peerAddresses, me),
+		me:          me,
+		store:       make(map[string]string),
+		address:     peerAddresses[me],
+		rf:          raft.Make(peerAddresses, me, applyCh, opCh),
+		lastApplied: make(map[int]int),
+		applyCh:     applyCh,
+		opCh:        opCh,
 	}
 
 	kv.rf.Start()
 	kv.serve()
+
+	go kv.applyOpsLoop()
 
 	return kv
 }
@@ -49,11 +65,19 @@ func (kv *Server) Get(req *GetRequest, res *GetResponse) error {
 }
 
 func (kv *Server) PutAppend(req *PutAppendRequest, res *PutAppendResponse) error {
-	_, ok := kv.store[req.Key]
+	if kv.lastApplied[int(req.ClientId)] >= int(req.ReqId) {
+		return nil
+	}
 
 	entries := []map[string]interface{}{
 		{
-			"data": fmt.Sprintf("key:%s value:%s op:%s", req.Key, req.Value, req.Op),
+			"data": fmt.Sprintf(
+				"key:%s|raft-delimiter|value:%s|raft-delimiter|op:%s|raft-delimiter|client:%d|raft-delimiter|request:%d|raft-delimiter|",
+				req.Key,
+				req.Value,
+				req.Op,
+				req.ClientId,
+				req.ReqId),
 			"term": nil,
 		},
 	}
@@ -69,13 +93,64 @@ func (kv *Server) PutAppend(req *PutAppendRequest, res *PutAppendResponse) error
 		return err
 	}
 
-	if !ok || req.Op == "Put" {
-		kv.store[req.Key] = req.Value
-	} else {
-		kv.store[req.Key] += req.Value
-	}
+	kv.waitForApply(req.ReqId, req.ClientId)
 
 	return nil
+}
+
+func (kv *Server) waitForApply(requestId int32, clientId int32) {
+	for {
+		var lastApplied int
+		var ok bool
+
+		kv.withLock("", func() {
+			lastApplied, ok = kv.lastApplied[int(clientId)]
+		})
+
+		if ok && lastApplied >= int(requestId) {
+			kv.lastApplied[int(clientId)] = int(requestId)
+			break
+		}
+	}
+}
+
+func (kv *Server) applyOpsLoop() {
+	for {
+		select {
+		case entry := <-kv.applyCh:
+			delimiter := "|raft-delimiter|"
+			data := entry["data"].(string)
+
+			parts := strings.Split(data, delimiter)
+			if len(parts) != 6 {
+				log.Fatal("log retrieved from node is of unknown format")
+			}
+
+			key := parts[0][4:]
+			value := parts[1][6:]
+			op := parts[2][3:]
+			clientId, _ := strconv.Atoi(parts[3][7:])
+			requestId, _ := strconv.Atoi(parts[4][8:])
+
+			if op == "Put" {
+				kv.store[key] = value
+			} else if op == "Append" {
+				_, ok := kv.store[key]
+				if !ok {
+					kv.store[key] = value
+				} else {
+					kv.store[key] += value
+				}
+			}
+			kv.opCh <- entry
+
+			kv.withLock("", func() {
+				kv.lastApplied[clientId] = requestId
+			})
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
 }
 
 func (kv *Server) serve() {
