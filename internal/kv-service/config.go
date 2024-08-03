@@ -1,6 +1,8 @@
 package kvservice
 
-import "time"
+import (
+	"time"
+)
 
 var clientId int
 

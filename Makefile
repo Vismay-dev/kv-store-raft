@@ -1,5 +1,5 @@
 # server store (makeshift persistence)
-SERVER_STORE := ./server_store
+SERVER_STORE := server_store
 
 .PHONY: clean
 clean: 

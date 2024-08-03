@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 type PersistedData struct {
@@ -13,7 +14,11 @@ type PersistedData struct {
 }
 
 func (rf *Raft) persist() error {
-	filename := fmt.Sprintf("../../server_store/%d", rf.me)
+	cwd, _ := os.Getwd()
+	projectRoot := filepath.Dir(filepath.Dir(cwd))
+	storagePath := filepath.Join(projectRoot, "server_store")
+
+	filename := fmt.Sprintf("%s/%d", storagePath, rf.me)
 
 	obj := PersistedData{
 		CurrentTerm: rf.currentTerm,
@@ -36,7 +41,11 @@ func (rf *Raft) persist() error {
 }
 
 func (rf *Raft) readPersist() error {
-	filename := fmt.Sprintf("../../server_store/%d", rf.me)
+	cwd, _ := os.Getwd()
+	projectRoot := filepath.Dir(filepath.Dir(cwd))
+	storagePath := filepath.Join(projectRoot, "server_store")
+
+	filename := fmt.Sprintf("%s/%d", storagePath, rf.me)
 
 	_, err := os.Stat(filename)
 	if os.IsNotExist(err) {

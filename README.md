@@ -97,6 +97,36 @@ err := clerk.Append(key, additionalValue)
 - `StartServers` uses an auto-incremented client ID.
 - Unique IDs prevent duplicate operations during network failures or retries.
 
+#### Example
+
+```go
+package main
+
+import (
+	"fmt"
+
+	kvservice "github.com/vismaysur/kv-store-raft/internal/kv-service"
+)
+
+func main() {
+	peerAddresses := []string{":8000", ":8001", ":8002", ":8003", ":8004"}
+	clerk := kvservice.StartServers(peerAddresses)
+
+	key := "k1"
+	value := "v1"
+	_ = clerk.Put(key, value)
+
+	out, _ := clerk.Get(key)
+	fmt.Print(out)
+
+	additionalValue := "v2"
+	_ = clerk.Append(key, additionalValue)
+
+	out, _ = clerk.Get(key)
+	fmt.Print(out)
+}
+```
+
 ### Test Commands
 
 To test for linearizability and fault tolerance, run the following command:
