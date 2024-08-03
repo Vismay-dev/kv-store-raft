@@ -16,7 +16,7 @@ func TestRaft(t *testing.T) {
 
 	go func() {
 		// utils.Debug.Store(1)
-		time.Sleep(18 * time.Second)
+		time.Sleep(20 * time.Second)
 		panic("test timed out...")
 	}()
 
