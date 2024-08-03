@@ -8,7 +8,6 @@ Scalable and fault-tolerant distributed key-value store implementing the Raft co
 
 - Fault tolerance is achieved via state-machine replication.
 - Strong consistency is guaranteed by the Raft protocol (implemented from scratch).
-- GETS can be served from any server node. PUTS/APPENDS can only be served by leader nodes.
 - Networking support built using the Go RPC package (instead of gRPC).
 - Compaction of Raft logs via snapshotting. (🚧)
 - High performance is achieved via sharding and replica groups. (🚧)
@@ -53,6 +52,12 @@ sequenceDiagram
 ```
 
 ### Test Command
+
+To test for linearizability and fault tolerance, run the following command:
+
+```sh
+make test-kvstore
+```
 
 To test raft consensus in isolation, run the following command:
 

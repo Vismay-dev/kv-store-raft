@@ -26,7 +26,7 @@ func MakeClerk(servers []*Server, clientId int32) *Clerk {
 }
 
 func (ck *Clerk) Get(key string) (string, error) {
-	atomic.AddInt32(&ck.requestId, 1)
+	// atomic.AddInt32(&ck.requestId, 1)
 
 	args := &GetRequest{
 		Key:      key,
