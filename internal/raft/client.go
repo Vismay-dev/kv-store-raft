@@ -23,16 +23,19 @@ func ClientSendData(entries []map[string]interface{}) (*ClientReqResponse, error
 	args := &ClientReqRequest{
 		Entries: entries,
 	}
-	var reply *ClientReqResponse
+	reply := &ClientReqResponse{}
 
 	node := 0
-	err = client.Call(fmt.Sprintf("Raft-%d.SendData", node), &args, &reply)
-	for err != nil {
-		node += 1
-		if node > 4 {
-			return nil, err
-		}
+
+	for ; ; node = node + 1 {
 		err = client.Call(fmt.Sprintf("Raft-%d.SendData", node), &args, &reply)
+
+		if err == nil && reply.Err == nil {
+			break
+		}
+		if reply.Err != nil && reply.Err != ErrIncorrectLeader {
+			return nil, reply.Err
+		}
 	}
 
 	return reply, nil

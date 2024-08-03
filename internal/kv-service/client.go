@@ -3,6 +3,8 @@ package kvservice
 import (
 	"fmt"
 	"sync/atomic"
+
+	"github.com/vismaysur/kv-store-raft/internal/raft"
 )
 
 type Clerk struct {
@@ -31,26 +33,23 @@ func (ck *Clerk) Get(key string) (string, error) {
 		ReqId: ck.requestId,
 	}
 
-	server := 0
+	server := ck.leaderId
 	var value string
-	for ; ; server = (server + 1) % (len(ck.servers)) {
+	for ; ; server = (server + 1) % int32(len(ck.servers)) {
 		reply := &GetResponse{}
 		rpcname := fmt.Sprintf("KVStore-%d.Get", server)
 
 		ok := call(ck.servers[server].address, rpcname, args, reply)
 
-		if ok {
+		if ok && reply.Err == "" {
+			ck.leaderId = int32(server)
 			value = reply.Value
 			break
 		}
 
-		// // some acceptable node error
-		// if !ok {
-		// 	continue
-		// }
-
-		// some other unknown node specific error
-		if !ok {
+		if !ok &&
+			reply.Err != raft.ErrIncorrectLeaderStr &&
+			reply.Err != raft.ErrDeadNodeStr {
 			return "", fmt.Errorf("error occurred; could not serve request")
 		}
 	}
@@ -76,11 +75,14 @@ func (ck *Clerk) Put(key string, value string) error {
 
 		ok := call(ck.servers[server].address, rpcname, args, reply)
 
-		if ok {
+		if ok && reply.Err == "" {
+			ck.leaderId = int32(server)
 			break
 		}
 
-		if !ok && reply.Err != ErrIncorrectLeader {
+		if !ok &&
+			reply.Err != raft.ErrIncorrectLeaderStr &&
+			reply.Err != raft.ErrDeadNodeStr {
 			return fmt.Errorf("error occurred; could not serve request")
 		}
 	}
@@ -106,11 +108,14 @@ func (ck *Clerk) Append(key string, arg string) error {
 
 		ok := call(ck.servers[server].address, rpcname, args, reply)
 
-		if ok {
+		if ok && reply.Err == "" {
+			ck.leaderId = int32(server)
 			break
 		}
 
-		if !ok && reply.Err != ErrIncorrectLeader {
+		if !ok &&
+			reply.Err != raft.ErrIncorrectLeaderStr &&
+			reply.Err != raft.ErrDeadNodeStr {
 			return fmt.Errorf("error occurred; could not serve request")
 		}
 	}

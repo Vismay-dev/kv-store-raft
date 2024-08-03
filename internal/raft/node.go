@@ -94,6 +94,14 @@ func (rf *Raft) killed() bool {
 	return int(atomic.LoadInt32(&rf.dead)) == 1
 }
 
+func (rf *Raft) GetState() State {
+	var state State
+	rf.withLock("", func() {
+		state = rf.state
+	})
+	return state
+}
+
 func (rf *Raft) serve() {
 	var rfId int
 	var peerAddr string

@@ -135,6 +135,112 @@ func (rf *Raft) sendAppendEntries(args *AppendEntriesRequest) {
 	}
 }
 
+func (rf *Raft) SendDataLocal(
+	entries []map[string]interface{},
+) error {
+	if rf.killed() {
+		return ErrDeadNode
+	}
+
+	var rfState State
+	rf.withLock("", func() {
+		rfState = rf.state
+	})
+
+	if rfState != Leader {
+		return ErrIncorrectLeader
+	}
+
+	var me int
+	var currentTerm int
+	var peerAddrs []string
+	var prevLogTerm int
+	var prevLogIndex int
+	var commitIndex int
+
+	rf.withLock("", func() {
+		rf.timerChHb <- struct{}{}
+
+		peerAddrs = make([]string, len(rf.peers))
+		copy(peerAddrs, rf.peers)
+		me = rf.me
+		currentTerm = rf.currentTerm
+
+		prevLogIndex = len(rf.log)
+		if len(rf.log) > 0 {
+			prevLogTerm = rf.log[len(rf.log)-1]["term"].(int)
+		} else {
+			prevLogTerm = 0
+		}
+
+		for _, entry := range entries {
+			entry["term"] = rf.currentTerm
+		}
+
+		rf.log = append(rf.log, entries...)
+		if err := rf.persist(); err != nil {
+			log.Fatalf("Error persisting: %s\n", err)
+		}
+
+		commitIndex = rf.commitIndex
+	})
+
+	var replicationCount int32 = 1
+
+	for i, peer := range peerAddrs {
+		if peer != peerAddrs[me] {
+			go func(peer string, prevLogIndex int, prevLogTerm int, idx int, commitIndex int) {
+				var args *AppendEntriesRequest
+
+				rf.withLock("", func() {
+					args = &AppendEntriesRequest{
+						Term:         rf.currentTerm,
+						LeaderId:     rf.me,
+						PrevLogIndex: prevLogIndex,
+						PrevLogTerm:  prevLogTerm,
+						Entries:      rf.log[rf.nextIndex[idx]-1:],
+						LeaderCommit: commitIndex,
+					}
+				})
+
+				var reply AppendEntriesResponse
+				ok := rf.sendAppendEntry(peer, args, &reply)
+
+				for !ok && reply.Term == currentTerm {
+					rf.withLock("", func() {
+						args.PrevLogIndex = prevLogIndex - 1
+						args.PrevLogTerm = rf.log[prevLogIndex-2]["term"].(int)
+						args.Entries = rf.log[prevLogIndex-1:]
+					})
+
+					ok = rf.sendAppendEntry(peer, args, &reply)
+				}
+
+				atomic.AddInt32(&replicationCount, 1)
+
+				rf.withLock("", func() {
+					rf.matchIndex[idx] = len(rf.log)
+					rf.nextIndex[idx] = len(rf.log) + 1
+				})
+			}(peer, prevLogIndex, prevLogTerm, i, commitIndex)
+		}
+	}
+
+	rf.withLock("", func() {
+		rf.timerChHb <- struct{}{}
+		rf.matchIndex[rf.me] = len(rf.log)
+		rf.nextIndex[rf.me] = len(rf.log) + 1
+		rf.commitIndex = len(rf.log)
+		utils.Dprintf(
+			"[%d @ %s] commit succesful\n",
+			rf.me,
+			rf.peers[rf.me],
+		)
+	})
+
+	return nil
+}
+
 // RPC
 
 func (rf *Raft) sendAppendEntry(
@@ -169,24 +275,8 @@ func (rf *Raft) SendData(
 	})
 
 	if rfState != Leader {
-		var peer string
-		var rpcname string
-
-		rf.withLock("", func() {
-			for i, rfPeer := range rf.peers {
-				if i == rf.leaderId {
-					peer = rfPeer
-				}
-			}
-			rpcname = fmt.Sprintf("Raft-%d.SendData", rf.leaderId)
-		})
-
-		if !rf.call(peer, rpcname, ClientReqReq, ClientReqRes) {
-			err := fmt.Errorf("error forward request to leader node")
-			return err
-		}
-
-		return nil
+		ClientReqRes.Err = ErrIncorrectLeader
+		return fmt.Errorf("incorrect leader node")
 	}
 
 	var me int
@@ -258,9 +348,6 @@ func (rf *Raft) SendData(
 				})
 			}(peer, prevLogIndex, prevLogTerm, i, commitIndex)
 		}
-	}
-
-	for atomic.LoadInt32(&replicationCount) < int32(len(peerAddrs)/2) {
 	}
 
 	rf.withLock("", func() {

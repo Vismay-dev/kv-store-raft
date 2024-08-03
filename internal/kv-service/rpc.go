@@ -1,6 +1,7 @@
 package kvservice
 
 import (
+	"log"
 	"net"
 	"net/rpc"
 
@@ -39,10 +40,11 @@ func call(peer, rpcname string, req interface{}, res interface{}) bool {
 	client := rpc.NewClient(conn)
 
 	if err := client.Call(rpcname, req, res); err != nil {
-		utils.Dprintf(
-			"[Clerk] RPC call to [%s] failed: %s",
+		log.Printf(
+			"[Clerk] RPC call to [%s] failed: %s, %v",
 			peer,
 			err,
+			res,
 		)
 		return false
 	}

@@ -41,8 +41,15 @@ sequenceDiagram
     end
 
     Client->>KVStore Service: Get Request
-    KVStore Service->>KVStore Service: Read Local State
-    KVStore Service-->>Client: Value
+    KVStore Service->>Raft Module: Is Leader?
+    alt Is Leader
+        Raft Module-->>KVStore Service: Yes
+        KVStore Service->>KVStore Service: Read Local State
+        KVStore Service-->>Client: Value
+    else Not Leader
+        Raft Module-->>KVStore Service: No
+        KVStore Service-->>Client: Redirect to Leader
+    end
 ```
 
 ### Test Command

@@ -1,10 +1,22 @@
 package raft
 
 import (
+	"encoding/gob"
+	"errors"
 	"net"
 	"net/rpc"
 
 	"github.com/vismaysur/kv-store-raft/internal/utils"
+)
+
+var (
+	ErrIncorrectLeaderStr = "ErrIncorrectLeader"
+	ErrDeadNodeStr        = "ErrDeadNode"
+)
+
+var (
+	ErrIncorrectLeader = errors.New("ErrIncorrectLeader")
+	ErrDeadNode        = errors.New("ErrDeadNode")
 )
 
 type RequestVoteRequest struct {
@@ -41,6 +53,7 @@ type ClientReqRequest struct {
 type ClientReqResponse struct {
 	CommitIndex int
 	Success     bool
+	Err         error
 }
 
 func (rf *Raft) call(peer, rpcname string, req interface{}, res interface{}) bool {
@@ -73,4 +86,8 @@ func (rf *Raft) call(peer, rpcname string, req interface{}, res interface{}) boo
 	}
 
 	return true
+}
+
+func init() {
+	gob.Register(errors.New(""))
 }

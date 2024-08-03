@@ -3,6 +3,7 @@ package kvservice
 import (
 	"log"
 	"testing"
+	"time"
 )
 
 func TestKVStore(t *testing.T) {
@@ -14,6 +15,8 @@ func TestKVStore(t *testing.T) {
 		kvServer := StartServer(peerAddresses, i)
 		kvServers = append(kvServers, kvServer)
 	}
+
+	time.Sleep(2 * time.Second)
 
 	clerk := MakeClerk(kvServers, 0)
 
