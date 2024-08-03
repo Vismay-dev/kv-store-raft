@@ -4,7 +4,7 @@
 
 Scalable and fault-tolerant distributed key-value store implementing the Raft consensus protocol for strong consistency. Based on the [Raft Consensus Algorithm](http://nil.lcs.mit.edu/6.824/2020/papers/raft-extended.pdf) extended paper by Diego Ongaro and John Ousterhout. The underlying details of client interaction design differ slightly from the specification in the paper.
 
-**Key Points:**
+#### Key Points:
 
 - Fault tolerance is achieved via state-machine replication.
 - Strong consistency is guaranteed by the Raft protocol (implemented from scratch).
@@ -51,7 +51,53 @@ sequenceDiagram
     end
 ```
 
-### Test Command
+### KV Store Client Usage
+
+#### Import
+
+```go
+import "github.com/vismaysur/kv-store-raft/internal/kvservice"
+```
+
+#### Initialization
+
+```go
+peerAddresses := []string{":8000", ":8001", ":8002", ":8003", ":8004"}
+clerk := kvservice.StartServers(peerAddresses)
+```
+
+- `peerAddresses`: List of server addresses for replica nodes.
+- `StartServers`: Initializes servers and returns a `Clerk` with auto-incremented client ID.
+- Includes 2-second delay for server initialization.
+
+#### Operations
+
+```go
+value, err := clerk.Get(key)
+err := clerk.Put(key, value)
+err := clerk.Append(key, additionalValue)
+```
+
+- `Get(key string) (string, error)`: Retrieves value for given key.
+- `Put(key string, value string) error`: Sets value for given key.
+- `Append(key string, arg string) error`: Appends value to existing key's value (treated as Put if key does not exist).
+
+#### Concurrency
+
+`Clerk` is thread-safe. Multiple goroutines can use the same instance concurrently.
+
+#### Server Management
+
+- Each server in `peerAddresses` acts as a backup storage node.
+- Ensures fault tolerance and high availability.
+- Client handles leader election and failover automatically.
+
+#### Client Identification
+
+- `StartServers` uses an auto-incremented client ID.
+- Unique IDs prevent duplicate operations during network failures or retries.
+
+### Test Commands
 
 To test for linearizability and fault tolerance, run the following command:
 
