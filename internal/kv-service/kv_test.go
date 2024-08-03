@@ -2,6 +2,7 @@ package kvservice
 
 import (
 	"log"
+	"path"
 	"testing"
 	"time"
 )
@@ -11,8 +12,11 @@ func TestKVStore(t *testing.T) {
 	peerAddresses := []string{":8000", ":8001", ":8002", ":8003", ":8004"}
 	kvServers := []*Server{}
 
+	cwd := "../../"
+	storagePath := path.Join(cwd, "/server_store/")
+
 	for i := range peerAddresses {
-		kvServer := StartServer(peerAddresses, i)
+		kvServer := StartServer(peerAddresses, i, storagePath)
 		kvServers = append(kvServers, kvServer)
 	}
 

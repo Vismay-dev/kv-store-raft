@@ -26,7 +26,7 @@ type Server struct {
 	opCh        chan map[string]interface{}
 }
 
-func StartServer(peerAddresses []string, me int) *Server {
+func StartServer(peerAddresses []string, me int, storage string) *Server {
 	applyCh := make(chan map[string]interface{}, 1)
 	opCh := make(chan map[string]interface{}, 1)
 
@@ -34,7 +34,7 @@ func StartServer(peerAddresses []string, me int) *Server {
 		me:          me,
 		store:       make(map[string]string),
 		address:     peerAddresses[me],
-		rf:          raft.Make(peerAddresses, me, applyCh, opCh),
+		rf:          raft.Make(peerAddresses, me, applyCh, opCh, storage),
 		lastApplied: make(map[int]int),
 		applyCh:     applyCh,
 		opCh:        opCh,

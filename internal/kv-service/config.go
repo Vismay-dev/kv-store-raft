@@ -6,11 +6,11 @@ import (
 
 var clientId int
 
-func StartServers(peerAddresses []string) *Clerk {
+func StartServers(peerAddresses []string, demoStoragePath string) *Clerk {
 	kvServers := []*Server{}
 
 	for i := range peerAddresses {
-		kvServer := StartServer(peerAddresses, i)
+		kvServer := StartServer(peerAddresses, i, demoStoragePath)
 		kvServers = append(kvServers, kvServer)
 	}
 

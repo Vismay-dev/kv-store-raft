@@ -36,6 +36,7 @@ type Raft struct {
 	nextIndex   []int
 	matchIndex  []int
 	leaderId    int
+	storage     string
 
 	applyCh chan map[string]interface{}
 	opCh    chan map[string]interface{}
@@ -43,7 +44,7 @@ type Raft struct {
 	dead int32
 }
 
-func Make(peers []string, me int, applyCh, opCh chan map[string]interface{}) *Raft {
+func Make(peers []string, me int, applyCh, opCh chan map[string]interface{}, storage string) *Raft {
 	rf := &Raft{
 		state:           Follower,
 		me:              me,
@@ -60,6 +61,7 @@ func Make(peers []string, me int, applyCh, opCh chan map[string]interface{}) *Ra
 		matchIndex:  []int{},
 		applyCh:     applyCh,
 		opCh:        opCh,
+		storage:     storage,
 
 		dead: 0,
 	}

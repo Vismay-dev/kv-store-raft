@@ -4,7 +4,6 @@ import (
 	"encoding/gob"
 	"fmt"
 	"os"
-	"path/filepath"
 )
 
 type PersistedData struct {
@@ -13,19 +12,17 @@ type PersistedData struct {
 	Log         []map[string]interface{}
 }
 
+// called within a lock - don't use withLock() here
+
 func (rf *Raft) persist() error {
-	cwd, _ := os.Getwd()
-	projectRoot := filepath.Dir(filepath.Dir(cwd))
-	storagePath := filepath.Join(projectRoot, "server_store")
-
-	filename := fmt.Sprintf("%s/%d", storagePath, rf.me)
-
+	storagePath := rf.storage
 	obj := PersistedData{
 		CurrentTerm: rf.currentTerm,
 		VotedFor:    rf.votedFor,
 		Log:         rf.log,
 	}
 
+	filename := fmt.Sprintf("%s/%d", storagePath, rf.me)
 	file, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0644)
 	if err != nil {
 		return err
@@ -40,11 +37,10 @@ func (rf *Raft) persist() error {
 	return nil
 }
 
-func (rf *Raft) readPersist() error {
-	cwd, _ := os.Getwd()
-	projectRoot := filepath.Dir(filepath.Dir(cwd))
-	storagePath := filepath.Join(projectRoot, "server_store")
+// called within a lock - don't use withLock() here
 
+func (rf *Raft) readPersist() error {
+	storagePath := rf.storage
 	filename := fmt.Sprintf("%s/%d", storagePath, rf.me)
 
 	_, err := os.Stat(filename)

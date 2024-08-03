@@ -3,6 +3,7 @@ package raft
 import (
 	"log"
 	"math/rand"
+	"path"
 	"testing"
 	"time"
 )
@@ -463,8 +464,12 @@ func setup(t *testing.T) ([]*Raft, []string) {
 
 	peerAddresses := []string{":8000", ":8001", ":8002", ":8003", ":8004"}
 	raftNodes := []*Raft{}
+
+	cwd := "../../"
+	storagePath := path.Join(cwd, "/server_store/")
+
 	for i := range peerAddresses {
-		rf := Make(peerAddresses, i, nil, nil)
+		rf := Make(peerAddresses, i, nil, nil, storagePath)
 		raftNodes = append(raftNodes, rf)
 	}
 
