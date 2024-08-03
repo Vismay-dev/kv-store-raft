@@ -49,7 +49,12 @@ func StartServer(peerAddresses []string, me int) *Server {
 }
 
 func (kv *Server) Get(req *GetRequest, res *GetResponse) error {
-	value, ok := kv.store[req.Key]
+	var value string
+	var ok bool
+
+	kv.withLock("", func() {
+		value, ok = kv.store[req.Key]
+	})
 
 	if kv.rf.GetState() != raft.Leader {
 		res.Err = raft.ErrIncorrectLeaderStr
@@ -65,7 +70,13 @@ func (kv *Server) Get(req *GetRequest, res *GetResponse) error {
 }
 
 func (kv *Server) PutAppend(req *PutAppendRequest, res *PutAppendResponse) error {
-	if kv.lastApplied[int(req.ClientId)] >= int(req.ReqId) {
+	var lastApplied int
+
+	kv.withLock("", func() {
+		lastApplied = kv.lastApplied[int(req.ClientId)]
+	})
+
+	if lastApplied >= int(req.ReqId) {
 		return nil
 	}
 
@@ -100,15 +111,17 @@ func (kv *Server) PutAppend(req *PutAppendRequest, res *PutAppendResponse) error
 
 func (kv *Server) waitForApply(requestId int32, clientId int32) {
 	for {
-		var lastApplied int
-		var ok bool
+		var condition bool
 
 		kv.withLock("", func() {
-			lastApplied, ok = kv.lastApplied[int(clientId)]
+			lastApplied, ok := kv.lastApplied[int(clientId)]
+			if ok && lastApplied >= int(requestId) {
+				kv.lastApplied[int(clientId)] = int(requestId)
+				condition = true
+			}
 		})
 
-		if ok && lastApplied >= int(requestId) {
-			kv.lastApplied[int(clientId)] = int(requestId)
+		if condition {
 			break
 		}
 	}
@@ -132,21 +145,21 @@ func (kv *Server) applyOpsLoop() {
 			clientId, _ := strconv.Atoi(parts[3][7:])
 			requestId, _ := strconv.Atoi(parts[4][8:])
 
-			if op == "Put" {
-				kv.store[key] = value
-			} else if op == "Append" {
-				_, ok := kv.store[key]
-				if !ok {
-					kv.store[key] = value
-				} else {
-					kv.store[key] += value
-				}
-			}
-			kv.opCh <- entry
-
 			kv.withLock("", func() {
+				if op == "Put" {
+					kv.store[key] = value
+				} else if op == "Append" {
+					_, ok := kv.store[key]
+					if !ok {
+						kv.store[key] = value
+					} else {
+						kv.store[key] += value
+					}
+				}
+				kv.opCh <- entry
 				kv.lastApplied[clientId] = requestId
 			})
+
 		default:
 			time.Sleep(10 * time.Millisecond)
 		}
