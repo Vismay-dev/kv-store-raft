@@ -9,7 +9,6 @@ Scalable and fault-tolerant distributed key-value store implementing the Raft co
 - Fault tolerance is achieved via state-machine replication.
 - Strong consistency is guaranteed by the Raft protocol (implemented from scratch).
 - Networking support built using the Go RPC package (instead of gRPC).
-- Compaction of Raft logs via snapshotting. (🚧)
 - High performance is achieved via sharding and replica groups. (🚧)
 - AWS EC2 hosting & S3 storage for enterprise-grade durability and scalability. (🚧)
 
