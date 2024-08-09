@@ -4,20 +4,42 @@
 
 Scalable and fault-tolerant distributed key-value store implementing the Raft consensus protocol for strong consistency. Based on the [Raft Consensus Algorithm](http://nil.lcs.mit.edu/6.824/2020/papers/raft-extended.pdf) extended paper by Diego Ongaro and John Ousterhout. The underlying details of client interaction design differ slightly from the specification in the paper.
 
-#### Key Points:
+### Key Features:
 
-- Fault tolerance is achieved via state-machine replication.
-- Strong consistency is guaranteed by the Raft protocol (implemented from scratch).
-- Networking support built using the Go RPC package (instead of gRPC).
-- Compaction of Raft logs via snapshotting. (🚧)
-- High performance is achieved via sharding and replica groups. (🚧)
-- AWS EC2 hosting & S3 storage for enterprise-grade durability and scalability. (🚧)
+- **Fault Tolerance**: Achieved through state-machine replication.
+- **Strong Consistency**: Guaranteed by the Raft protocol (implemented from scratch).
+- **Networking**: Built using the Go RPC package for efficient communication.
+- **High Performance**: (🚧 In Progress) To be achieved via sharding and replica groups
+- **Enterprise-Grade**: (🚧 In Progress) Planned AWS EC2 hosting & S3 storage for durability and scalability.
 
-#### Potential Improvement:
+### Project Structure
 
-- Snapshotting / log-structured merge trees for Raft log compaction.
-
-Note: I will not be including snapshotting/log compaction in this implementation. Feel free to make a PR and contribute! (ref: [Raft Paper: Section 7 & 8](https://raft.github.io/raft.pdf))
+```
+kv-store-raft/
+├── example/
+│   └── main.go
+├── internal/
+│   ├── kvservice/
+│   │   ├── clerk.go
+│   │   ├── config.go
+│   │   ├── rpc.go
+│   │   ├── server.go
+│   │   └── kv_test.go (<- TESTS)
+│   └── raft/
+│       ├── client.go
+│       ├── election.go
+│       ├── follower.go
+│       ├── leader.go
+│       ├── node.go
+│       ├── persist.go
+│       ├── rpc.go
+│       └── raft_test.go (<- TESTS)
+├── .gitignore
+├── go.mod
+├── go.sum
+├── Makefile
+└── README.md
+```
 
 ### Integration Flow (Single Replica Group)
 
@@ -57,13 +79,22 @@ sequenceDiagram
     end
 ```
 
-### KV Store Client Usage
+### Installation
 
-#### Import
+#### Clone the repository
 
-```go
-import "github.com/vismaysur/kv-store-raft/internal/kvservice"
+```sh
+git clone https://github.com/vismaysur/kv-store-raft.git
+cd kv-store-raft
 ```
+
+#### Install Dependencies
+
+```sh
+go mod tidy
+```
+
+### KV Store Client Usage
 
 #### Initialization
 
@@ -159,6 +190,12 @@ To test raft consensus in isolation, run the following command:
 ```sh
 make test-raft
 ```
+
+### Future Improvements
+
+- Implement snapshotting / log-structured merge trees for Raft log compaction.
+- Add support for dynamic membership changes.
+- Implement a command-line interface for easier interaction with the key-value store.
 
 ### Additional References
 
