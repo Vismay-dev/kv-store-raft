@@ -10,7 +10,6 @@ Scalable and fault-tolerant distributed key-value store implementing the Raft co
 - **Strong Consistency**: Guaranteed by the Raft protocol (implemented from scratch).
 - **Networking**: Built using the Go RPC package for efficient communication.
 - **High Performance**: (🚧 In Progress) To be achieved via sharding and replica groups
-- **Enterprise-Grade**: (🚧 In Progress) Planned AWS EC2 hosting & S3 storage for durability and scalability.
 
 ### Project Structure
 
@@ -190,12 +189,6 @@ To test raft consensus in isolation, run the following command:
 ```sh
 make test-raft
 ```
-
-### Future Improvements
-
-- Implement snapshotting / log-structured merge trees for Raft log compaction.
-- Add support for dynamic membership changes.
-- Implement a command-line interface for easier interaction with the key-value store.
 
 ### Additional References
 
